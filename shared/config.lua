@@ -1,17 +1,27 @@
 Config = {}
 
--- The default key used to trigger the car radio UI. 
--- Players can also customize this in their GTA V / FiveM Key Bindings settings under "FiveM".
+Config.Locale = 'cs'
+Config.Debug = false
+
+-- Zobrazit "NYN" prefix v NUI (pokud resource má UI)
+Config.ShowNynPrefix = true
+
+-- The default key used to trigger the car radio UI.
+-- Players can also customize this in FiveM Key Bindings under "FiveM".
 Config.Keybind = 'Q'
 
--- Disable car radio in emergency vehicles (police, ambulance, fire trucks, etc. - vehicle class 18)
+-- Disable car radio in emergency vehicles (police, ambulance, fire – vehicle class 18)
 Config.DisableInEmergency = true
 
--- List of stations available in the UI. 
--- Types supported: 
--- 1. "off" - turns off all music
--- 2. "native" - switches in-game GTA V radio stations
--- 3. "stream" - plays a custom URL stream (e.g. mp3/icecast web radio) in HTML Audio
+-- Notify via nyn_lib when radio is blocked (e.g. emergency vehicle)
+Config.NotifyOnBlocked = true
+
+--[[
+  Station types:
+  1. "off"    - turns off all music
+  2. "native" - GTA V radio stations
+  3. "stream" - custom URL stream (mp3/icecast) in HTML Audio
+]]
 Config.Stations = {
     {
         name = "Radio Off",
@@ -168,4 +178,3 @@ Config.Stations = {
         icon = "SPIN"
     }
 }
-

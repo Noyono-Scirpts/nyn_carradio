@@ -4,11 +4,32 @@ let stationsList = [];
 let autoHideTimer = null;
 let closeTimeout = null;
 let playStreamTimeout = null;
+let uiLocales = {
+    prefix: 'NYN',
+    title: 'CAR RADIO',
+    off: 'Off',
+    stream_error: 'Stream error',
+    footer: 'Scroll / Arrows - Select',
+};
 
 const radioContainer = document.getElementById('radio-container');
 const activeStationName = document.getElementById('active-station-name');
 const activeStationLogo = document.getElementById('active-station-logo');
 const stationsWrapper = document.getElementById('stations-wrapper');
+const statusText = document.getElementById('status-text');
+const footerText = document.getElementById('radio-footer-text');
+
+function applyLocales(locales) {
+    if (!locales) return;
+    uiLocales = { ...uiLocales, ...locales };
+    if (statusText) {
+        const prefix = uiLocales.prefix ? `${uiLocales.prefix} ` : '';
+        statusText.innerText = `${prefix}${uiLocales.title}`.trim();
+    }
+    if (footerText && uiLocales.footer) {
+        footerText.innerText = uiLocales.footer;
+    }
+}
 
 function resetAutoHideTimer(duration = 3500) {
     if (autoHideTimer) {
@@ -207,6 +228,10 @@ function selectStation(index) {
 window.addEventListener('message', function(event) {
     const data = event.data;
     const radioCard = document.querySelector('.radio-card');
+
+    if (data.locales) {
+        applyLocales(data.locales);
+    }
     
     if (data.action === 'open') {
         console.log("[NUI] Message action: open");
@@ -292,7 +317,7 @@ window.addEventListener('message', function(event) {
             
             audioObj.addEventListener('error', (e) => {
                 if (currentAudio === audioObj) {
-                    activeStationName.innerText = "Chyba streamu";
+                    activeStationName.innerText = uiLocales.stream_error || 'Stream error';
                 }
                 console.error("Failed to load stream:", e);
             });
@@ -327,7 +352,7 @@ window.addEventListener('message', function(event) {
             autoHideTimer = null;
         }
         currentStationIndex = 0;
-        activeStationName.innerText = "Vypnuto";
+        activeStationName.innerText = uiLocales.off || 'Off';
         updateActiveNameGradient('off');
         updateHeaderLogo(null);
         updateVisualizer('off');
