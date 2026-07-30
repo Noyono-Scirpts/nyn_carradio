@@ -3,7 +3,7 @@ game 'gta5'
 
 author 'Noyono'
 description 'NYN Car Radio - vehicle radio selector with multiplayer sync'
-version '1.0.0'
+version '1.1.0'
 
 ui_page 'ui/index.html'
 
@@ -24,8 +24,7 @@ server_scripts {
 
 files {
     'ui/index.html',
-    'ui/style.css',
-    'ui/script.js',
+    'ui/assets/*',
     'ui/images/*.png',
 }
 
@@ -36,14 +35,16 @@ dependencies {
 
 --[[
   Escrow (Cfx.re Keymaster):
-  - PROTECTED: client/, server/, shared locale helper, ui code
+  - PROTECTED: client/, server/, shared locale helper, ui build
   - OPEN (editable): config, locales, fxmanifest, README
+  - UI source (web/) is for development; ship built ui/
 ]]
 escrow_ignore {
     'fxmanifest.lua',
     'shared/config.lua',
     'locales/**/*',
     'README.md',
+    'web/**/*',
 }
 
 lua54 'yes'

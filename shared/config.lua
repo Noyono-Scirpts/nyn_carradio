@@ -6,6 +6,11 @@ Config.Debug = false
 -- Zobrazit "NYN" prefix v NUI (pokud resource má UI)
 Config.ShowNynPrefix = true
 
+-- Placené rozšíření (drop-in resource). Stačí ensure — base si ho najde samo.
+Config.EnableExtension = true
+Config.ExtensionCommand = 'carradio'
+Config.ExtensionResource = 'nyn_carradio_plus'
+
 -- The default key used to trigger the car radio UI.
 -- Players can also customize this in FiveM Key Bindings under "FiveM".
 Config.Keybind = 'Q'

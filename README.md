@@ -1,6 +1,6 @@
 # nyn_carradio
 
-Modern synchronized car radio for FiveM — glassmorphic UI, audio visualizer, native GTA stations + custom web streams.
+Modern synchronized car radio for FiveM — glassmorphic UI (Svelte), audio visualizer, native GTA stations + custom web streams.
 
 **Requires:** `nyn_lib`, `ox_lib`
 
@@ -14,13 +14,23 @@ Modern synchronized car radio for FiveM — glassmorphic UI, audio visualizer, n
 
 ## Features
 
-- Premium glassmorphic UI with equalizer visualizer
+- Premium glassmorphic UI (Svelte) with equalizer visualizer
 - Tap / hold keybind (cycle station vs full carousel)
 - Multiplayer sync for driver + passengers (native + streams)
 - Local logos (`ui/images/`) or HTTPS image URLs
 - Locales (`cs` / `en`) via `Config.Locale`
 - Emergency vehicle lockout (class 18) with optional `nyn_lib` notify
+- Extension shell (`/carradio`) — foundation for paid YouTube / playlist features
 
+## Car Radio+ (placené rozšíření)
+
+YouTube **i live streamy** ve vozidle přes `xsound` (jako boombox + streamy z base radia).
+
+**Cabin mix:** uvnitř plný zvuk → zvenku při zavřených dveřích jen dunění → otevřené dveře = slyšet normálně.
+
+1. Nahraj `nyn_carradio_plus`
+2. `ensure xsound` + `ensure nyn_carradio` + `ensure nyn_carradio_plus`
+3. `/carradio` → Play URL (YT nebo `https://…/stream.mp3`)
 ## Controls
 
 Default key: **`Q`** (Settings → Key Bindings → FiveM → Open car radio)
@@ -29,6 +39,7 @@ Default key: **`Q`** (Settings → Key Bindings → FiveM → Open car radio)
 - **Hold:** full carousel
 - **Scroll / arrows:** change station while UI open
 - **Release / Escape:** close UI
+- **`/carradio`:** open extension UI shell (when `Config.EnableExtension = true`)
 
 ## Configuration
 
@@ -38,12 +49,32 @@ Edit `shared/config.lua`:
 Config.Locale = 'cs'
 Config.Debug = false
 Config.Keybind = 'Q'
+Config.EnableExtension = true
+Config.ExtensionCommand = 'carradio'
 Config.DisableInEmergency = true
 Config.NotifyOnBlocked = true
 Config.Stations = { ... }
 ```
 
 Locales: `locales/cs.lua`, `locales/en.lua`
+
+## UI development (Svelte)
+
+Source lives in `web/`. Built files go to `ui/`.
+
+```bash
+cd web
+npm install
+npm run build
+```
+
+Dev preview (browser only):
+
+```bash
+npm run dev
+```
+
+After UI changes, always run `npm run build` before restarting the resource.
 
 ## Installation
 

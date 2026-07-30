@@ -20,6 +20,21 @@ RegisterNetEvent('nyn_carradio:server:setRadio', function(netId, station, isManu
     TriggerClientEvent('nyn_carradio:client:syncRadio', -1, netId, station, isManual, src, isManual)
 end)
 
+--- Used by nyn_carradio_plus (and future extensions)
+exports('SetVehicleRadioState', function(netId, station, initiator, isManual)
+    if type(netId) ~= 'number' or type(station) ~= 'table' then return false end
+    if isManual == nil then isManual = true end
+    vehicleRadios[netId] = station
+    TriggerClientEvent('nyn_carradio:client:syncRadio', -1, netId, station, isManual, initiator or 0, isManual)
+    return true
+end)
+
+exports('ClearVehicleRadioState', function(netId)
+    if type(netId) ~= 'number' then return false end
+    vehicleRadios[netId] = nil
+    return true
+end)
+
 RegisterNetEvent('nyn_carradio:server:requestRadioState', function(netId)
     local src = source
     if type(netId) ~= 'number' then return end

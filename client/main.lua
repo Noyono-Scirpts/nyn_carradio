@@ -74,6 +74,13 @@ end
 local function applyStationLocally(vehicle, station)
     if not station then return end
 
+    -- Switching away from YouTube/plus → stop plus audio
+    if station.type ~= 'youtube' and station.type ~= 'plus' and GetResourceState(Config.ExtensionResource or 'nyn_carradio_plus') == 'started' then
+        pcall(function()
+            exports[Config.ExtensionResource or 'nyn_carradio_plus']:Stop()
+        end)
+    end
+
     if station.type == 'native' and station.value then
         SendNUIMessage({ action = 'stopStream' })
         SetVehicleRadioEnabled(vehicle, true)
@@ -84,6 +91,10 @@ local function applyStationLocally(vehicle, station)
             action = 'playStream',
             url = station.value
         })
+    elseif station.type == 'youtube' or station.type == 'plus' then
+        -- Handled by nyn_carradio_plus (xsound + cabin muffling)
+        killNativeRadio(vehicle)
+        SendNUIMessage({ action = 'stopStream' })
     else -- off / fallback
         killNativeRadio(vehicle)
         SendNUIMessage({ action = 'stopStream' })
@@ -315,4 +326,129 @@ CreateThread(function()
             Wait(500)
         end
     end
+end)
+
+----------------------------------------------------------------------
+-- EXTENSION BRIDGE — drop-in nyn_carradio_plus (YouTube přes xsound)
+----------------------------------------------------------------------
+
+local isExtensionOpen = false
+
+local function extensionResource()
+    return Config.ExtensionResource or 'nyn_carradio_plus'
+end
+
+local function hasExtension()
+    return GetResourceState(extensionResource()) == 'started'
+end
+
+local function extensionInfo()
+    if not hasExtension() then
+        return { available = false, xsound = false, features = {} }
+    end
+
+    local ok, info = pcall(function()
+        return exports[extensionResource()]:GetInfo()
+    end)
+
+    if ok and type(info) == 'table' then
+        info.available = true
+        return info
+    end
+
+    return {
+        available = true,
+        xsound = GetResourceState('xsound') == 'started',
+        features = { youtube = true },
+    }
+end
+
+local function openExtensionUI()
+    if not Config.EnableExtension then return end
+    if isExtensionOpen then return end
+
+    isExtensionOpen = true
+    SetNuiFocus(true, true)
+    SendNUIMessage({
+        action = 'openExtension',
+        tab = 'search',
+        extension = extensionInfo(),
+        state = hasExtension() and (function()
+            local ok, st = pcall(function()
+                return exports[extensionResource()]:GetState()
+            end)
+            return ok and st or nil
+        end)() or nil,
+    })
+end
+
+local function closeExtensionUI()
+    if not isExtensionOpen then return end
+    isExtensionOpen = false
+    SetNuiFocus(false, false)
+    SendNUIMessage({ action = 'closeExtension' })
+end
+
+RegisterCommand(Config.ExtensionCommand or 'carradio', function()
+    if not Config.EnableExtension then return end
+    if isExtensionOpen then
+        closeExtensionUI()
+    else
+        openExtensionUI()
+    end
+end, false)
+
+RegisterNUICallback('closeExtension', function(_, cb)
+    isExtensionOpen = false
+    SetNuiFocus(false, false)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('extensionPlay', function(data, cb)
+    if not hasExtension() then
+        cb({ ok = false, error = 'missing_extension' })
+        return
+    end
+
+    local vehicle = getVehicle()
+    if not vehicle or vehicle == 0 then
+        if nyn_lib and nyn_lib.client and nyn_lib.client.Notify then
+            nyn_lib.client.Notify('error', 'Car Radio+', 'Musíš sedět ve vozidle.')
+        end
+        cb({ ok = false, error = 'not_in_vehicle' })
+        return
+    end
+
+    local ok, err = exports[extensionResource()]:Play({
+        url = data and data.url,
+        title = data and data.title,
+        volume = data and data.volume,
+        distance = data and data.distance,
+    })
+
+    cb({ ok = ok and true or false, error = err })
+end)
+
+RegisterNUICallback('extensionPause', function(_, cb)
+    if not hasExtension() then
+        cb({ ok = false })
+        return
+    end
+    cb({ ok = exports[extensionResource()]:Pause() and true or false })
+end)
+
+RegisterNUICallback('extensionResume', function(_, cb)
+    if not hasExtension() then
+        cb({ ok = false })
+        return
+    end
+    cb({ ok = exports[extensionResource()]:Resume() and true or false })
+end)
+
+RegisterNUICallback('extensionStop', function(_, cb)
+    if not hasExtension() then
+        cb({ ok = false })
+        return
+    end
+    cb({ ok = exports[extensionResource()]:Stop() and true or false })
 end)
