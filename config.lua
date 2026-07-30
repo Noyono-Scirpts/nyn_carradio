@@ -4,6 +4,9 @@ Config = {}
 -- Players can also customize this in their GTA V / FiveM Key Bindings settings under "FiveM".
 Config.Keybind = 'Q'
 
+-- Disable car radio in emergency vehicles (police, ambulance, fire trucks, etc. - vehicle class 18)
+Config.DisableInEmergency = true
+
 -- List of stations available in the UI. 
 -- Types supported: 
 -- 1. "off" - turns off all music
@@ -161,7 +164,7 @@ Config.Stations = {
         name = "Spin",
         type = "stream",
         value = "https://icecast4.play.cz/spin128.mp3",
-        image = "https://r2.fivemanage.com/ip40XPTNAyr9igwi6trti/p2mVFQmx0Dyp.jpg",
+        image = "https://www.radiospin.cz/assets/images/logo-spin-2022.png",
         icon = "SPIN"
     }
 }

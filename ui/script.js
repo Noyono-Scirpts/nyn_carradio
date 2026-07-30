@@ -2,18 +2,61 @@ let currentAudio = null;
 let currentStationIndex = 0;
 let stationsList = [];
 let autoHideTimer = null;
+let closeTimeout = null;
+let playStreamTimeout = null;
 
 const radioContainer = document.getElementById('radio-container');
 const activeStationName = document.getElementById('active-station-name');
 const activeStationLogo = document.getElementById('active-station-logo');
 const stationsWrapper = document.getElementById('stations-wrapper');
 
-function closeUI() {
+function resetAutoHideTimer(duration = 3500) {
     if (autoHideTimer) {
         clearTimeout(autoHideTimer);
         autoHideTimer = null;
     }
-    radioContainer.classList.add('hidden');
+    autoHideTimer = setTimeout(() => {
+        console.log("[NUI] autoHideTimer expired. Closing UI.");
+        closeUI();
+    }, duration);
+}
+
+function showUI(stations) {
+    console.log("[NUI] showUI called. Stations passed:", !!stations);
+    if (closeTimeout) {
+        clearTimeout(closeTimeout);
+        closeTimeout = null;
+    }
+    radioContainer.classList.remove('hidden');
+    // Force reflow
+    radioContainer.offsetHeight;
+    radioContainer.classList.add('visible');
+    
+    if (stations) {
+        generateStations(stations);
+    }
+}
+
+function hideUI() {
+    console.log("[NUI] hideUI called");
+    if (closeTimeout) {
+        clearTimeout(closeTimeout);
+    }
+    radioContainer.classList.remove('visible');
+    closeTimeout = setTimeout(() => {
+        console.log("[NUI] closeTimeout expired. Adding hidden class.");
+        radioContainer.classList.add('hidden');
+        closeTimeout = null;
+    }, 350); // Matches CSS transition duration
+}
+
+function closeUI() {
+    console.log("[NUI] closeUI called");
+    if (autoHideTimer) {
+        clearTimeout(autoHideTimer);
+        autoHideTimer = null;
+    }
+    hideUI();
     fetch(`https://${GetParentResourceName()}/close`, {
         method: 'POST',
         headers: {
@@ -119,10 +162,7 @@ function selectStation(index) {
     if (!station) return;
     
     if (autoHideTimer) {
-        clearTimeout(autoHideTimer);
-        autoHideTimer = setTimeout(() => {
-            closeUI();
-        }, 1500);
+        resetAutoHideTimer(3500);
     }
     
     const items = document.querySelectorAll('.station-circle');
@@ -137,6 +177,10 @@ function selectStation(index) {
     updateHeaderLogo(station.image);
     updateVisualizer(station.type);
 
+    if (playStreamTimeout) {
+        clearTimeout(playStreamTimeout);
+        playStreamTimeout = null;
+    }
     if (currentAudio) {
         currentAudio.pause();
         currentAudio.src = '';
@@ -165,19 +209,20 @@ window.addEventListener('message', function(event) {
     const radioCard = document.querySelector('.radio-card');
     
     if (data.action === 'open') {
+        console.log("[NUI] Message action: open");
         if (autoHideTimer) {
             clearTimeout(autoHideTimer);
             autoHideTimer = null;
         }
         if (radioCard) radioCard.classList.remove('mini');
-        radioContainer.classList.remove('hidden');
-        generateStations(data.stations);
+        showUI(data.stations);
     } else if (data.action === 'close') {
+        console.log("[NUI] Message action: close");
         if (autoHideTimer) {
             clearTimeout(autoHideTimer);
             autoHideTimer = null;
         }
-        radioContainer.classList.add('hidden');
+        hideUI();
     } else if (data.action === 'nextStation') {
         let nextIndex = (currentStationIndex + 1) % stationsList.length;
         selectStation(nextIndex);
@@ -185,26 +230,23 @@ window.addEventListener('message', function(event) {
         let prevIndex = (currentStationIndex - 1 + stationsList.length) % stationsList.length;
         selectStation(prevIndex);
     } else if (data.action === 'cycleNext') {
+        console.log("[NUI] Message action: cycleNext");
         if (autoHideTimer) {
             clearTimeout(autoHideTimer);
+            autoHideTimer = null;
         }
         
         if (radioCard) radioCard.classList.add('mini');
-        radioContainer.classList.remove('hidden');
-        
-        if (stationsList.length === 0 && data.stations) {
-            generateStations(data.stations);
-        }
+        showUI(stationsList.length === 0 ? data.stations : null);
         
         if (stationsList.length > 0) {
             let nextIndex = (currentStationIndex + 1) % stationsList.length;
             selectStation(nextIndex);
         }
         
-        autoHideTimer = setTimeout(() => {
-            closeUI();
-        }, 1500);
+        resetAutoHideTimer(3500);
     } else if (data.action === 'syncVisuals') {
+        console.log("[NUI] Message action: syncVisuals", data.index, data.showUI);
         if (autoHideTimer) {
             clearTimeout(autoHideTimer);
             autoHideTimer = null;
@@ -216,11 +258,8 @@ window.addEventListener('message', function(event) {
 
         if (data.showUI) {
             if (radioCard) radioCard.classList.add('mini');
-            radioContainer.classList.remove('hidden');
-            
-            autoHideTimer = setTimeout(() => {
-                closeUI();
-            }, 1500);
+            showUI();
+            resetAutoHideTimer(3500);
         }
 
         currentStationIndex = data.index;
@@ -237,30 +276,47 @@ window.addEventListener('message', function(event) {
         
         updateSlider();
     } else if (data.action === 'playStream') {
+        if (playStreamTimeout) {
+            clearTimeout(playStreamTimeout);
+        }
         if (currentAudio) {
             currentAudio.pause();
             currentAudio.src = '';
             currentAudio = null;
         }
         
-        currentAudio = new Audio(data.url);
-        currentAudio.volume = 0.35;
-        
-        currentAudio.addEventListener('error', (e) => {
-            activeStationName.innerText = "Chyba streamu";
-            console.error("Failed to load stream:", e);
-        });
-        
-        currentAudio.play().catch(err => {
-            console.error("Audio playback error:", err);
-        });
+        playStreamTimeout = setTimeout(() => {
+            const audioObj = new Audio(data.url);
+            currentAudio = audioObj;
+            audioObj.volume = 0.35;
+            
+            audioObj.addEventListener('error', (e) => {
+                if (currentAudio === audioObj) {
+                    activeStationName.innerText = "Chyba streamu";
+                }
+                console.error("Failed to load stream:", e);
+            });
+            
+            audioObj.play().catch(err => {
+                console.error("Audio playback error:", err);
+            });
+            playStreamTimeout = null;
+        }, 200);
     } else if (data.action === 'stopStream') {
+        if (playStreamTimeout) {
+            clearTimeout(playStreamTimeout);
+            playStreamTimeout = null;
+        }
         if (currentAudio) {
             currentAudio.pause();
             currentAudio.src = '';
             currentAudio = null;
         }
     } else if (data.action === 'stopAll') {
+        if (playStreamTimeout) {
+            clearTimeout(playStreamTimeout);
+            playStreamTimeout = null;
+        }
         if (currentAudio) {
             currentAudio.pause();
             currentAudio.src = '';
