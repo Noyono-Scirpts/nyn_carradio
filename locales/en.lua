@@ -7,6 +7,8 @@ Locales['en'] = {
     notify_emergency = 'Radio is disabled in emergency vehicles.',
     notify_not_in_vehicle_title = 'Car Radio',
     notify_not_in_vehicle = 'You must be in a vehicle.',
+    notify_plus_busy_title = 'Car Radio',
+    notify_plus_busy = 'Something else is playing (Car Radio+). Stop it in the extension first.',
 
     -- UI
     ui_prefix = 'NYN',

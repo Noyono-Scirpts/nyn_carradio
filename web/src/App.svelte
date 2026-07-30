@@ -1,6 +1,38 @@
 <script>
+  import { onMount } from 'svelte'
   import RadioHud from './components/RadioHud.svelte'
   import ExtensionApp from './components/ExtensionApp.svelte'
+  import { onNuiMessage } from './lib/nui.js'
+  import {
+    playPlusStream,
+    stopPlusMedia,
+    setPlusVolume,
+  } from './lib/plusMedia.js'
+
+  onMount(() => {
+    return onNuiMessage((data) => {
+      if (!data || !data.action) return
+
+      if (data.action === 'plusPlay') {
+        console.log('[nyn_carradio] NUI received plusPlay', data)
+        const volume = typeof data.volume === 'number' ? data.volume : 0.8
+        if (data.kind === 'youtube') {
+          // YouTube audio is xsound-only — never show an embed
+          stopPlusMedia()
+        } else if (data.kind === 'stream' && data.url) {
+          playPlusStream(data.url, volume)
+        }
+      } else if (data.action === 'plusStop') {
+        stopPlusMedia()
+      } else if (data.action === 'plusVolume') {
+        setPlusVolume(data.volume)
+      } else if (data.action === 'stopAll') {
+        stopPlusMedia()
+      }
+      // stopStream = jen base Spin HTML — nesmí zabít plus YouTube
+
+    })
+  })
 </script>
 
 <RadioHud />

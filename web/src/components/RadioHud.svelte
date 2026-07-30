@@ -95,7 +95,7 @@
     logoBroken = false
   }
 
-  function selectStation(index, { notify = true } = {}) {
+  async function selectStation(index, { notify = true } = {}) {
     if (!stations.length) return
     if (index < 0 || index >= stations.length) return
 
@@ -106,16 +106,22 @@
       resetAutoHide(3500)
     }
 
-    stopStream()
+    // Stop current HTML stream; Lua will send playStream for stream stations
+    // (do NOT play here too — double play caused pause/play DOMException)
+    if (station.type !== 'stream') {
+      stopStream()
+    }
 
     if (notify) {
-      nuiCallback('selectStation', {
+      await nuiCallback('selectStation', {
         index,
         name: station.name,
         image: station.image,
         type: station.type,
         value: station.value,
       })
+    } else if (station.type === 'stream' && station.value) {
+      playStream(station.value)
     }
   }
 
