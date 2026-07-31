@@ -53,6 +53,7 @@ Config.EnableExtension = true
 Config.ExtensionCommand = 'carradio'
 Config.DisableInEmergency = true
 Config.NotifyOnBlocked = true
+Config.Notify = 'nyn_lib' -- 'nyn_lib' | 'ox_lib'
 Config.Stations = { ... }
 ```
 

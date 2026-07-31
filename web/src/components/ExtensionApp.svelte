@@ -2,38 +2,47 @@
   import { onMount } from 'svelte'
   import { nuiCallback, onNuiMessage } from '../lib/nui.js'
   import {
-    playPlusStream,
     stopPlusMedia,
     setPlusVolume,
     forceUnmute,
-    extractYoutubeId,
   } from '../lib/plusMedia.js'
   import '../styles/extension.css'
 
   let visible = $state(false)
   let mountedVisible = $state(false)
-  let tab = $state('search')
+  let tab = $state('stations')
   let urlInput = $state('')
   let busy = $state(false)
   let statusMsg = $state('')
-  let extension = $state({ available: false, xsound: false, features: {}, maxVolume: 1, defaultVolume: 1 })
+  let extension = $state({
+    available: false,
+    xsound: false,
+    features: {},
+    maxVolume: 1,
+    defaultVolume: 1,
+    stations: [],
+  })
   let playback = $state(null)
   let localVolume = $state(100)
   let volumeTimer = null
+  let activeStationUrl = $state('')
 
   const tabs = [
-    { id: 'now', label: 'Now Playing' },
-    { id: 'search', label: 'Play URL' },
-    { id: 'playlists', label: 'Playlists' },
-    { id: 'library', label: 'Library' },
+    { id: 'stations', label: 'Stanice' },
+    { id: 'now', label: 'Teď hraje' },
+    { id: 'search', label: 'URL' },
   ]
 
-  const tabTitle = $derived(tabs.find((t) => t.id === tab)?.label || 'Radio')
+  const tabTitle = $derived(tabs.find((t) => t.id === tab)?.label || 'Plus')
   const hasPlus = $derived(!!extension.available)
   const canPlay = $derived(hasPlus)
+  const stations = $derived(Array.isArray(extension.stations) ? extension.stations : [])
   const maxVolumePct = $derived(Math.round((extension.maxVolume ?? 1) * 100))
   const volumeFill = $derived(
     Math.min(100, Math.max(0, (localVolume / Math.max(maxVolumePct, 1)) * 100)),
+  )
+  const playingLabel = $derived(
+    playback?.paused ? 'Pozastaveno' : playback?.playing ? 'Přehrává se' : 'Nehraje',
   )
 
   function detectTitle(url) {
@@ -43,17 +52,25 @@
 
   function open(payload = {}) {
     if (payload.extension) {
-      extension = { ...extension, ...payload.extension }
+      extension = {
+        ...extension,
+        ...payload.extension,
+        stations: payload.extension.stations || extension.stations || [],
+      }
       const def = payload.extension.defaultVolume ?? 1
       if (typeof def === 'number') localVolume = Math.round(def * 100)
     }
     if (payload.state) {
       playback = payload.state
-      if (payload.state.url) urlInput = payload.state.url
+      if (payload.state.url) {
+        urlInput = payload.state.url
+        activeStationUrl = payload.state.url
+      }
       if (typeof payload.state.volume === 'number') {
         localVolume = Math.round(payload.state.volume * 100)
       }
     }
+    tab = payload.tab || (stations.length ? 'stations' : 'search')
     visible = true
     requestAnimationFrame(() => {
       mountedVisible = true
@@ -68,43 +85,40 @@
     }, 220)
   }
 
-  async function playUrl() {
+  async function startPlay(url, title) {
     if (!canPlay || busy) return
-    const url = urlInput.trim()
+    url = (url || '').trim()
     if (!url) {
       statusMsg = 'Vlož YouTube nebo live stream URL.'
       return
     }
 
-    const title = detectTitle(url)
+    const resolvedTitle = title || detectTitle(url)
     const volume = localVolume / 100
 
-    // YouTube → always xsound (no visible embed). Streams → HTML audio.
-    const ytId = extractYoutubeId(url)
-    let clientStarted = false
-    if (!ytId && /^https?:\/\//i.test(url)) {
-      clientStarted = !!playPlusStream(url, volume)
-    }
+    // Always xsound from Lua — starting NUI here caused duplicate (NUI + PlayUrlPos)
+    stopPlusMedia()
 
     busy = true
     statusMsg = ''
     const res = await nuiCallback('extensionPlay', {
       url,
-      title,
+      title: resolvedTitle,
       volume,
-      clientPlaying: clientStarted,
+      clientPlaying: false,
     })
     busy = false
 
     if (res?.ok) {
-      playback = { url, title, playing: true, paused: false, volume }
+      playback = { url, title: resolvedTitle, playing: true, paused: false, volume }
+      activeStationUrl = url
+      urlInput = url
       tab = 'now'
       statusMsg = 'Přehrávám…'
-      if (clientStarted) forceUnmute()
     } else {
       stopPlusMedia()
       const map = {
-        missing_extension: 'Chybí nyn_carradio_plus — nahraj placené rozšíření.',
+        missing_extension: 'Chybí nyn_carradio_plus.',
         not_in_vehicle: 'Musíš sedět ve vozidle.',
         invalid_url: 'Neplatný YouTube / stream odkaz.',
         no_xsound: 'Video nelze přehrát — xsound neběží.',
@@ -115,17 +129,21 @@
     }
   }
 
+  async function playUrl() {
+    await startPlay(urlInput, detectTitle(urlInput.trim()))
+  }
+
+  async function playStation(station) {
+    if (!station?.url) return
+    await startPlay(station.url, station.name || detectTitle(station.url))
+  }
+
   async function pauseTrack() {
-    stopPlusMedia()
     await nuiCallback('extensionPause')
     if (playback) playback = { ...playback, playing: false, paused: true }
   }
 
   async function resumeTrack() {
-    // YouTube stays on xsound (Lua Resume). Only restart NUI for live streams.
-    if (playback?.url && !extractYoutubeId(playback.url)) {
-      playPlusStream(playback.url, localVolume / 100)
-    }
     await nuiCallback('extensionResume')
     if (playback) playback = { ...playback, playing: true, paused: false }
   }
@@ -134,11 +152,12 @@
     stopPlusMedia()
     await nuiCallback('extensionStop')
     playback = null
+    activeStationUrl = ''
   }
 
   function unmuteClick() {
     const ok = forceUnmute()
-    statusMsg = ok ? 'Zvuk zapnutý.' : 'Zvuk nejde zapnout — zkus Play znovu.'
+    statusMsg = ok ? 'Zvuk zapnutý.' : 'Zvuk jde přes xsound — Pause/Resume v Teď hraje.'
   }
 
   function onVolumeInput(e) {
@@ -150,10 +169,14 @@
     }, 120)
   }
 
+  function stationInitial(name) {
+    const t = (name || '?').trim()
+    return t.slice(0, 2).toUpperCase()
+  }
+
   onMount(() => {
     const off = onNuiMessage((data) => {
       if (data.action === 'openExtension') {
-        tab = data.tab || 'search'
         open(data)
       } else if (data.action === 'closeExtension') {
         mountedVisible = false
@@ -181,8 +204,9 @@
     <div class="ext-shell">
       <aside class="ext-sidebar">
         <div class="ext-brand">
-          <span class="ext-brand-label">NYN EXTENSION</span>
-          <span class="ext-brand-title">Car Radio+</span>
+          <span class="ext-brand-label">NYN</span>
+          <span class="ext-brand-title">Plus</span>
+          <span class="ext-brand-sub">Car Radio+</span>
         </div>
 
         <nav class="ext-nav">
@@ -197,6 +221,11 @@
             </button>
           {/each}
         </nav>
+
+        <div class="ext-side-status">
+          <span class="ext-dot" class:on={!!playback?.playing && !playback?.paused}></span>
+          <span>{playingLabel}</span>
+        </div>
       </aside>
 
       <section class="ext-main">
@@ -208,23 +237,61 @@
         <div class="ext-content">
           {#if !hasPlus}
             <div class="ext-panel">
-              <span class="ext-badge">Drop-in required</span>
+              <span class="ext-badge">Plus required</span>
               <div class="ext-panel-card">
                 <h3>Chybí nyn_carradio_plus</h3>
-                <p>
-                  Nahraj resource na server a ensure-ni ho. Base radio si ho najde samo.
-                </p>
+                <p>Nahraj resource na server a ensure-ni ho. Základní Q rádio funguje bez Plus.</p>
               </div>
+            </div>
+          {:else if tab === 'stations'}
+            <div class="ext-panel">
+              <span class="ext-badge">Online stanice</span>
+              {#if stations.length === 0}
+                <div class="ext-panel-card">
+                  <h3>Žádné stanice</h3>
+                  <p>
+                    Přidej je do <code>nyn_carradio_plus/shared/config.lua</code> →
+                    <code>Config.Stations</code>.
+                  </p>
+                </div>
+              {:else}
+                <div class="ext-station-list">
+                  {#each stations as station}
+                    <button
+                      type="button"
+                      class="ext-station"
+                      class:active={activeStationUrl === station.url && playback?.playing}
+                      disabled={!canPlay || busy}
+                      onclick={() => playStation(station)}
+                    >
+                      {#if station.image}
+                        <img class="ext-station-art" src={station.image} alt="" />
+                      {:else}
+                        <div class="ext-station-art fallback">{stationInitial(station.name)}</div>
+                      {/if}
+                      <div class="ext-station-meta">
+                        <strong>{station.name || 'Stanice'}</strong>
+                        <span>{station.type === 'youtube' ? 'YouTube' : 'Live stream'}</span>
+                      </div>
+                      <span class="ext-station-play">{busy && activeStationUrl === station.url ? '…' : '▶'}</span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+              {#if statusMsg}
+                <div class="ext-panel-card"><p>{statusMsg}</p></div>
+              {/if}
             </div>
           {:else if tab === 'now'}
             <div class="ext-panel">
-              <span class="ext-badge">xsound · cabin mix</span>
+              <span class="ext-badge">xsound · cabin</span>
               <div class="ext-panel-card">
                 <div class="ext-nowplaying">
-                  <div class="ext-nowplaying-art"></div>
+                  <div class="ext-nowplaying-art" class:live={!!playback?.playing && !playback?.paused}></div>
                   <div class="ext-nowplaying-meta">
                     <strong>{playback?.title || 'Nic nehraje'}</strong>
-                    <span>{playback?.url || 'Vlož odkaz v Play URL.'}</span>
+                    <span>{playback?.url || 'Vyber stanici nebo vlož URL.'}</span>
+                    <em class="ext-now-state">{playingLabel}</em>
                   </div>
                 </div>
               </div>
@@ -248,20 +315,20 @@
 
               <div class="ext-search-box">
                 {#if playback?.paused}
-                  <button type="button" onclick={resumeTrack}>Resume</button>
+                  <button type="button" onclick={resumeTrack}>Pokračovat</button>
                 {:else if playback?.playing}
-                  <button type="button" onclick={pauseTrack}>Pause</button>
+                  <button type="button" onclick={pauseTrack}>Pauza</button>
                 {/if}
                 <button type="button" onclick={unmuteClick}>Zapnout zvuk</button>
                 <button type="button" onclick={stopTrack} disabled={!playback}>Stop</button>
               </div>
             </div>
-          {:else if tab === 'search'}
+          {:else}
             <div class="ext-panel">
               <span class="ext-badge">{extension.xsound ? 'YouTube + Live' : 'NUI only · xsound off'}</span>
               <div class="ext-panel-card">
-                <h3>YouTube nebo live rádio</h3>
-                <p>Vlož odkaz a stiskni Play. Hlasitost nastavíš i tady nebo v Now Playing.</p>
+                <h3>Vlastní odkaz</h3>
+                <p>YouTube nebo přímý stream (mp3 / icecast). Stanice z configu najdeš v záložce Stanice.</p>
               </div>
               <div class="ext-panel-card">
                 <div class="ext-volume-row">
@@ -293,22 +360,6 @@
               {#if statusMsg}
                 <div class="ext-panel-card"><p>{statusMsg}</p></div>
               {/if}
-            </div>
-          {:else if tab === 'playlists'}
-            <div class="ext-panel">
-              <span class="ext-badge">Playlists · soon</span>
-              <div class="ext-panel-card">
-                <h3>Playlisty</h3>
-                <p>Fronta / playlisty přijdou později.</p>
-              </div>
-            </div>
-          {:else}
-            <div class="ext-panel">
-              <span class="ext-badge">Library · soon</span>
-              <div class="ext-panel-card">
-                <h3>Knihovna</h3>
-                <p>Uložené skladby — později.</p>
-              </div>
             </div>
           {/if}
         </div>

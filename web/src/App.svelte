@@ -7,6 +7,7 @@
     playPlusStream,
     stopPlusMedia,
     setPlusVolume,
+    setPlusMuffle,
   } from './lib/plusMedia.js'
 
   onMount(() => {
@@ -26,6 +27,8 @@
         stopPlusMedia()
       } else if (data.action === 'plusVolume') {
         setPlusVolume(data.volume)
+      } else if (data.action === 'plusMuffle') {
+        setPlusMuffle(!!data.muffled)
       } else if (data.action === 'stopAll') {
         stopPlusMedia()
       }

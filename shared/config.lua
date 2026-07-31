@@ -18,8 +18,11 @@ Config.Keybind = 'Q'
 -- Disable car radio in emergency vehicles (police, ambulance, fire – vehicle class 18)
 Config.DisableInEmergency = true
 
--- Notify via nyn_lib when radio is blocked (e.g. emergency vehicle)
+-- Notify when radio is blocked / Plus missing / not in vehicle
 Config.NotifyOnBlocked = true
+
+-- 'nyn_lib' = naše notifikace z nyn_lib | 'ox_lib' = ox_lib notify
+Config.Notify = 'nyn_lib'
 
 --[[
   Station types:

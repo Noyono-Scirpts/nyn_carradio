@@ -6,16 +6,54 @@ local isHolding = false
 local pressTime = 0
 local uiOpened = false
 local currentStation = nil -- last applied station (for native keep-alive)
+local isExtensionOpen = false
 
 local function debugPrint(...)
     if not Config.Debug then return end
     print(('[nyn_carradio:client] %s'):format(table.concat({ ... }, ' ')))
 end
 
-local function notify(type, titleKey, messageKey)
-    if not nyn_lib or not nyn_lib.client or not nyn_lib.client.Notify then return end
-    nyn_lib.client.Notify(type, Locale(titleKey), Locale(messageKey))
+local function notify(nType, titleOrKey, messageOrKey, duration)
+    local title = Locale(titleOrKey)
+    local message = Locale(messageOrKey)
+    if not title or title == '' then return end
+    message = message or ''
+    duration = duration or 4000
+    nType = nType or 'info'
+
+    local system = Config.Notify or 'nyn_lib'
+
+    if system == 'ox_lib' and GetResourceState('ox_lib') == 'started' then
+        exports.ox_lib:notify({
+            title = title,
+            description = message,
+            type = nType == 'success' and 'success' or (nType == 'error' and 'error' or 'inform'),
+            duration = duration,
+        })
+        return
+    end
+
+    -- Default: naše nyn_lib notifikace
+    if GetResourceState('nyn_lib') == 'started' then
+        local ok = pcall(function()
+            exports.nyn_lib:newnotification(nType, title, message, duration)
+        end)
+        if ok then return end
+    end
+
+    if GetResourceState('ox_lib') == 'started' then
+        exports.ox_lib:notify({
+            title = title,
+            description = message,
+            type = nType == 'success' and 'success' or (nType == 'error' and 'error' or 'inform'),
+            duration = duration,
+        })
+    end
 end
+
+RegisterNetEvent('nyn_carradio:client:notify', function(nType, title, message, duration)
+    notify(nType, title, message, duration)
+end)
 
 --- Active Car Radio+ session (playing or paused) — blocks base Q radio
 local function isPlusSessionActive()
@@ -93,9 +131,9 @@ local function applyStationLocally(vehicle, station)
     if not station then return end
     currentStation = station
 
-    -- Stop plus ONLY if it was actually playing — never fire a blind Stop()
-    -- (that was racing stopStream and killing Spin / other base streams).
-    if station.type ~= 'youtube' and station.type ~= 'plus' then
+    -- Stop plus ONLY when user picks a real base station (native/stream).
+    -- Never kill Plus for off / virgin init — that races re-enter and silences cabin audio.
+    if station.type == 'native' or station.type == 'stream' then
         local ext = Config.ExtensionResource or 'nyn_carradio_plus'
         if GetResourceState(ext) == 'started' then
             local playing = false
@@ -126,6 +164,7 @@ local function applyStationLocally(vehicle, station)
         killNativeRadio(vehicle)
         SendNUIMessage({ action = 'stopStream' })
     else -- off / fallback
+        -- If Plus is still playing on this car, keep it — don't push silence
         killNativeRadio(vehicle)
         SendNUIMessage({ action = 'stopStream' })
     end
@@ -307,6 +346,13 @@ RegisterNetEvent('nyn_carradio:client:initializeRadioState', function(netId)
         local vehicle = getVehicle()
 
         if vehicle and vehicle ~= 0 and VehToNet(vehicle) == netId then
+            -- Plus may still be playing after exit (cabin muffling) even when base
+            -- has no station yet — never force OFF / broadcast that stops Plus.
+            if isPlusSessionActive() then
+                killNativeRadio(vehicle)
+                SendNUIMessage({ action = 'stopStream' })
+                return
+            end
             forceRadioOff(vehicle)
             TriggerServerEvent('nyn_carradio:server:setRadio', netId, offStationPayload(), false)
         end
@@ -323,7 +369,12 @@ CreateThread(function()
         -- Enter vehicle: kill GTA radio immediately, then sync our state
         if vehicle ~= 0 and lastVehicle == 0 then
             killNativeRadio(vehicle)
-            SendNUIMessage({ action = 'stopAll', locales = GetUiLocales() })
+            -- stopAll also kills Plus NUI media — only stop base HTML stream when Plus is live
+            if isPlusSessionActive() then
+                SendNUIMessage({ action = 'stopStream', locales = GetUiLocales() })
+            else
+                SendNUIMessage({ action = 'stopAll', locales = GetUiLocales() })
+            end
 
             if isEmergencyVehicle(vehicle) then
                 forceRadioOff(vehicle)
@@ -339,9 +390,19 @@ CreateThread(function()
                 isUIOpenInHoldMode = false
                 SendNUIMessage({ action = 'close' })
             end
+            if isExtensionOpen then
+                isExtensionOpen = false
+                SetNuiFocus(false, false)
+                SendNUIMessage({ action = 'closeExtension' })
+            end
             isHolding = false
             currentStation = nil
-            SendNUIMessage({ action = 'stopAll', locales = GetUiLocales() })
+            -- Keep Plus cabin audio on the car; only stop base HTML streams
+            if isPlusSessionActive() then
+                SendNUIMessage({ action = 'stopStream', locales = GetUiLocales() })
+            else
+                SendNUIMessage({ action = 'stopAll', locales = GetUiLocales() })
+            end
             SetUserRadioControlEnabled(true)
         end
 
@@ -409,8 +470,6 @@ exports('ForwardNui', forwardNuiMessage)
 -- EXTENSION BRIDGE — drop-in nyn_carradio_plus (YouTube přes xsound)
 ----------------------------------------------------------------------
 
-local isExtensionOpen = false
-
 local function extensionResource()
     return Config.ExtensionResource or 'nyn_carradio_plus'
 end
@@ -444,18 +503,33 @@ local function openExtensionUI()
     if not Config.EnableExtension then return end
     if isExtensionOpen then return end
 
+    local vehicle = getVehicle()
+    if not vehicle or vehicle == 0 then
+        if Config.NotifyOnBlocked ~= false then
+            notify('error', 'notify_not_in_vehicle_title', 'notify_not_in_vehicle')
+        end
+        return
+    end
+
+    if not hasExtension() then
+        if Config.NotifyOnBlocked ~= false then
+            notify('error', 'notify_plus_missing_title', 'notify_plus_missing')
+        end
+        return
+    end
+
     isExtensionOpen = true
     SetNuiFocus(true, true)
     SendNUIMessage({
         action = 'openExtension',
-        tab = 'search',
+        tab = 'stations',
         extension = extensionInfo(),
-        state = hasExtension() and (function()
+        state = (function()
             local ok, st = pcall(function()
                 return exports[extensionResource()]:GetState()
             end)
             return ok and st or nil
-        end)() or nil,
+        end)(),
     })
 end
 
@@ -470,9 +544,9 @@ RegisterCommand(Config.ExtensionCommand or 'carradio', function()
     if not Config.EnableExtension then return end
     if isExtensionOpen then
         closeExtensionUI()
-    else
-        openExtensionUI()
+        return
     end
+    openExtensionUI()
 end, false)
 
 RegisterNUICallback('closeExtension', function(_, cb)
@@ -489,9 +563,7 @@ RegisterNUICallback('extensionPlay', function(data, cb)
 
     local vehicle = getVehicle()
     if not vehicle or vehicle == 0 then
-        if nyn_lib and nyn_lib.client and nyn_lib.client.Notify then
-            nyn_lib.client.Notify('error', 'Car Radio+', 'Musíš sedět ve vozidle.')
-        end
+        notify('error', 'notify_not_in_vehicle_title', 'notify_not_in_vehicle')
         cb({ ok = false, error = 'not_in_vehicle' })
         return
     end
@@ -509,12 +581,10 @@ RegisterNUICallback('extensionPlay', function(data, cb)
         cb({ ok = true })
     else
         local errCode = type(err) == 'string' and err or 'play_failed'
-        if nyn_lib and nyn_lib.client and nyn_lib.client.Notify then
-            local msg = errCode == 'no_xsound'
-                and 'Video nelze přehrát — xsound neběží.'
-                or 'Video nelze přehrát.'
-            nyn_lib.client.Notify('error', 'Car Radio+', msg)
-        end
+        local msg = errCode == 'no_xsound'
+            and 'Video nelze přehrát — xsound neběží.'
+            or 'Video nelze přehrát.'
+        notify('error', 'Car Radio+', msg)
         cb({ ok = false, error = errCode })
     end
 end)

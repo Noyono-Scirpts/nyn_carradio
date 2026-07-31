@@ -9,6 +9,8 @@ Locales['cs'] = {
     notify_not_in_vehicle = 'Musíš být ve vozidle.',
     notify_plus_busy_title = 'Autoradio',
     notify_plus_busy = 'Momentálně hraje něco jiného (Car Radio+). Zastav to ve rozšíření.',
+    notify_plus_missing_title = 'Car Radio+',
+    notify_plus_missing = 'Rozšíření nyn_carradio_plus neběží. Základní rádio otevřeš klávesou Q.',
 
     -- UI
     ui_prefix = 'NYN',
