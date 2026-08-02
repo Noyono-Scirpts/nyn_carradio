@@ -32,6 +32,14 @@ end)
 exports('ClearVehicleRadioState', function(netId)
     if type(netId) ~= 'number' then return false end
     vehicleRadios[netId] = nil
+    -- Broadcast so passengers clear Plus title / mini HUD
+    TriggerClientEvent('nyn_carradio:client:syncRadio', -1, netId, {
+        index = 0,
+        name = 'Radio Off',
+        image = 'OFF.png',
+        type = 'off',
+        value = nil,
+    }, false, 0, false)
     return true
 end)
 

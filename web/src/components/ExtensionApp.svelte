@@ -183,6 +183,21 @@
         setTimeout(() => {
           visible = false
         }, 220)
+      } else if (data.action === 'extensionState') {
+        // Shared track sync for passengers (and live updates while UI open)
+        if (data.state) {
+          playback = data.state
+          if (data.state.url) {
+            urlInput = data.state.url
+            activeStationUrl = data.state.url
+          }
+          if (typeof data.state.volume === 'number') {
+            localVolume = Math.round(data.state.volume * 100)
+          }
+        } else {
+          playback = null
+          activeStationUrl = ''
+        }
       }
     })
 
