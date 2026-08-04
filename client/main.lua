@@ -500,22 +500,27 @@ local function extensionInfo()
 end
 
 local function openExtensionUI()
-    if not Config.EnableExtension then return end
-    if isExtensionOpen then return end
+    if not Config.EnableExtension then
+        if Config.NotifyOnBlocked ~= false then
+            notify('error', 'notify_plus_missing_title', 'notify_extension_disabled')
+        end
+        return false
+    end
+    if isExtensionOpen then return true end
 
     local vehicle = getVehicle()
     if not vehicle or vehicle == 0 then
         if Config.NotifyOnBlocked ~= false then
             notify('error', 'notify_not_in_vehicle_title', 'notify_not_in_vehicle')
         end
-        return
+        return false
     end
 
     if not hasExtension() then
         if Config.NotifyOnBlocked ~= false then
             notify('error', 'notify_plus_missing_title', 'notify_plus_missing')
         end
-        return
+        return false
     end
 
     isExtensionOpen = true
@@ -531,23 +536,34 @@ local function openExtensionUI()
             return ok and st or nil
         end)(),
     })
+    return true
 end
 
 local function closeExtensionUI()
-    if not isExtensionOpen then return end
+    if not isExtensionOpen then return false end
     isExtensionOpen = false
     SetNuiFocus(false, false)
     SendNUIMessage({ action = 'closeExtension' })
+    return true
 end
 
-RegisterCommand(Config.ExtensionCommand or 'carradio', function()
-    if not Config.EnableExtension then return end
+local function toggleExtensionUI()
     if isExtensionOpen then
-        closeExtensionUI()
-        return
+        return closeExtensionUI()
     end
-    openExtensionUI()
-end, false)
+    return openExtensionUI()
+end
+
+--- Used by nyn_carradio_plus (command / keybind žijí v + scriptu)
+exports('OpenExtension', openExtensionUI)
+exports('CloseExtension', closeExtensionUI)
+exports('ToggleExtension', toggleExtensionUI)
+exports('IsExtensionOpen', function()
+    return isExtensionOpen
+end)
+exports('IsExtensionEnabled', function()
+    return Config.EnableExtension == true
+end)
 
 RegisterNUICallback('closeExtension', function(_, cb)
     isExtensionOpen = false

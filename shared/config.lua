@@ -6,9 +6,9 @@ Config.Debug = false
 -- Zobrazit "NYN" prefix v NUI (pokud resource má UI)
 Config.ShowNynPrefix = true
 
--- Placené rozšíření (drop-in resource). Stačí ensure — base si ho najde samo.
+-- Placené rozšíření (drop-in). Command/keybind jsou v nyn_carradio_plus.
+-- Tady jen zapneš/vypneš, jestli base UI bridge + open export fungují.
 Config.EnableExtension = true
-Config.ExtensionCommand = 'carradio'
 Config.ExtensionResource = 'nyn_carradio_plus'
 
 -- The default key used to trigger the car radio UI.

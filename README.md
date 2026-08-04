@@ -20,7 +20,7 @@ Modern synchronized car radio for FiveM — glassmorphic UI (Svelte), audio visu
 - Local logos (`ui/images/`) or HTTPS image URLs
 - Locales (`cs` / `en`) via `Config.Locale`
 - Emergency vehicle lockout (class 18) with optional `nyn_lib` notify
-- Extension shell (`/carradio`) — foundation for paid YouTube / playlist features
+- Extension shell — UI v base; command/keybind v `nyn_carradio_plus`
 
 ## Car Radio+ (placené rozšíření)
 
@@ -30,7 +30,7 @@ YouTube **i live streamy** ve vozidle přes `xsound` (jako boombox + streamy z b
 
 1. Nahraj `nyn_carradio_plus`
 2. `ensure xsound` + `ensure nyn_carradio` + `ensure nyn_carradio_plus`
-3. `/carradio` → Play URL (YT nebo `https://…/stream.mp3`)
+3. `/carradio` nebo keybind z `nyn_carradio_plus` config → Play URL (YT nebo `https://…/stream.mp3`)
 ## Controls
 
 Default key: **`Q`** (Settings → Key Bindings → FiveM → Open car radio)
@@ -39,7 +39,7 @@ Default key: **`Q`** (Settings → Key Bindings → FiveM → Open car radio)
 - **Hold:** full carousel
 - **Scroll / arrows:** change station while UI open
 - **Release / Escape:** close UI
-- **`/carradio`:** open extension UI shell (when `Config.EnableExtension = true`)
+- **Car Radio+:** v base `Config.EnableExtension = true`; command/keybind v `nyn_carradio_plus` (default `/carradio`, **F7**)
 
 ## Configuration
 
@@ -50,7 +50,7 @@ Config.Locale = 'cs'
 Config.Debug = false
 Config.Keybind = 'Q'
 Config.EnableExtension = true
-Config.ExtensionCommand = 'carradio'
+Config.ExtensionResource = 'nyn_carradio_plus'
 Config.DisableInEmergency = true
 Config.NotifyOnBlocked = true
 Config.Notify = 'nyn_lib' -- 'nyn_lib' | 'ox_lib'

@@ -11,6 +11,7 @@ Locales['en'] = {
     notify_plus_busy = 'Something else is playing (Car Radio+). Stop it in the extension first.',
     notify_plus_missing_title = 'Car Radio+',
     notify_plus_missing = 'nyn_carradio_plus is not running. Use Q for the base radio.',
+    notify_extension_disabled = 'Car Radio+ is disabled in config (EnableExtension).',
 
     -- UI
     ui_prefix = 'NYN',

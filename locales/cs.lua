@@ -11,6 +11,7 @@ Locales['cs'] = {
     notify_plus_busy = 'Momentálně hraje něco jiného (Car Radio+). Zastav to ve rozšíření.',
     notify_plus_missing_title = 'Car Radio+',
     notify_plus_missing = 'Rozšíření nyn_carradio_plus neběží. Základní rádio otevřeš klávesou Q.',
+    notify_extension_disabled = 'Car Radio+ je v configu vypnuté (EnableExtension).',
 
     -- UI
     ui_prefix = 'NYN',

@@ -18,9 +18,9 @@ let filterNode = null
 let gainNode = null
 let usingWebAudio = false
 
-const MUFFLE_FREQ = 580
+const MUFFLE_FREQ = 300
 const CLEAR_FREQ = 18000
-const MUFFLE_VOL_MUL = 0.22
+const MUFFLE_VOL_MUL = 0.28
 
 export function preloadYtApi() {
   if (ytApiReady) return ytApiReady
