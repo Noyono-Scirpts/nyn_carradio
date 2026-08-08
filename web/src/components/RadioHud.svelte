@@ -174,6 +174,15 @@
           }
           resetAutoHide(3500)
           break
+        case 'cyclePrev':
+          clearAutoHide()
+          mini = true
+          showUI(stations.length === 0 ? data.stations : null)
+          if (stations.length > 0) {
+            selectStation((currentIndex - 1 + stations.length) % stations.length)
+          }
+          resetAutoHide(3500)
+          break
         case 'syncVisuals':
           clearAutoHide()
           if ((!stations || stations.length === 0) && data.stations) {

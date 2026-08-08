@@ -429,22 +429,48 @@ CreateThread(function()
                     SendNUIMessage({ action = 'close' })
                 end
                 isHolding = false
-            elseif isUIOpen then
+            elseif not isExtensionOpen and not isPlusSessionActive() then
+                -- Mouse wheel = radio (same as GTA in-vehicle); works with UI closed too
                 DisableControlAction(0, 14, true)
                 DisableControlAction(0, 15, true)
-                DisableControlAction(0, 174, true)
-                DisableControlAction(0, 175, true)
 
-                DisableControlAction(0, 24, true)
-                DisableControlAction(0, 25, true)
-                DisableControlAction(0, 37, true)
-                DisableControlAction(0, 44, true)
-                DisableControlAction(0, 140, true)
+                if isUIOpen then
+                    DisableControlAction(0, 174, true)
+                    DisableControlAction(0, 175, true)
+                    DisableControlAction(0, 24, true)
+                    DisableControlAction(0, 25, true)
+                    DisableControlAction(0, 37, true)
+                    DisableControlAction(0, 44, true)
+                    DisableControlAction(0, 140, true)
+                end
 
-                if IsDisabledControlJustPressed(0, 14) or IsDisabledControlJustPressed(0, 175) then
-                    SendNUIMessage({ action = 'nextStation' })
-                elseif IsDisabledControlJustPressed(0, 15) or IsDisabledControlJustPressed(0, 174) then
-                    SendNUIMessage({ action = 'prevStation' })
+                local nextPressed = IsDisabledControlJustPressed(0, 14)
+                    or (isUIOpen and IsDisabledControlJustPressed(0, 175))
+                local prevPressed = IsDisabledControlJustPressed(0, 15)
+                    or (isUIOpen and IsDisabledControlJustPressed(0, 174))
+
+                if nextPressed then
+                    if isUIOpen then
+                        SendNUIMessage({ action = 'nextStation' })
+                    else
+                        isUIOpen = true
+                        SendNUIMessage({
+                            action = 'cycleNext',
+                            stations = Config.Stations,
+                            locales = GetUiLocales(),
+                        })
+                    end
+                elseif prevPressed then
+                    if isUIOpen then
+                        SendNUIMessage({ action = 'prevStation' })
+                    else
+                        isUIOpen = true
+                        SendNUIMessage({
+                            action = 'cyclePrev',
+                            stations = Config.Stations,
+                            locales = GetUiLocales(),
+                        })
+                    end
                 end
             end
             Wait(0)
@@ -636,4 +662,48 @@ RegisterNUICallback('extensionSetVolume', function(data, cb)
     end
     local ok = exports[extensionResource()]:SetVolume(data and data.volume)
     cb({ ok = ok and true or false })
+end)
+
+RegisterNUICallback('extensionPlaylist', function(data, cb)
+    if not hasExtension() then
+        cb({ ok = false, error = 'missing_extension' })
+        return
+    end
+    local action = data and data.action
+    if type(action) ~= 'string' or action == '' then
+        cb({ ok = false, error = 'invalid' })
+        return
+    end
+
+    local ok, result = pcall(function()
+        return exports[extensionResource()]:PlaylistAction(action, data and data.payload or {})
+    end)
+    if not ok then
+        cb({ ok = false, error = 'export_failed' })
+        return
+    end
+    cb(type(result) == 'table' and result or { ok = false, error = 'bad_result' })
+end)
+
+RegisterNUICallback('extensionPlayPlaylist', function(data, cb)
+    if not hasExtension() then
+        cb({ ok = false, error = 'missing_extension' })
+        return
+    end
+
+    local vehicle = getVehicle()
+    if not vehicle or vehicle == 0 then
+        notify('error', 'notify_not_in_vehicle_title', 'notify_not_in_vehicle')
+        cb({ ok = false, error = 'not_in_vehicle' })
+        return
+    end
+
+    local playlistId = data and data.id
+    local volume = data and data.volume
+    local ok, err = exports[extensionResource()]:PlayPlaylist(playlistId, volume)
+    if ok == true or ok == 1 then
+        cb({ ok = true })
+    else
+        cb({ ok = false, error = type(err) == 'string' and err or 'play_failed' })
+    end
 end)
