@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte'
+  import { X, Play, LoaderCircle } from '@lucide/svelte'
   import { nuiCallback, onNuiMessage } from '../lib/nui.js'
   import {
     stopPlusMedia,
@@ -456,7 +457,9 @@
             <span class="ext-dot" class:on={isLive}></span>
             <span class="ext-live-label">{playingLabel}</span>
           </div>
-          <button type="button" class="ext-close" onclick={close} aria-label="Close">×</button>
+          <button type="button" class="ext-close" onclick={close} aria-label="Close">
+            <X size={18} strokeWidth={2.2} />
+          </button>
         </div>
       </header>
 
@@ -496,7 +499,13 @@
                         <strong>{station.name || 'Stanice'}</strong>
                         <span>{station.type === 'youtube' ? 'YouTube' : 'Live stream'}</span>
                       </div>
-                      <span class="ext-station-play">{busy && activeStationUrl === station.url ? '…' : '▶'}</span>
+                      <span class="ext-station-play">
+                        {#if busy && activeStationUrl === station.url}
+                          <LoaderCircle size={14} strokeWidth={2.2} class="ext-spin-icon" />
+                        {:else}
+                          <Play size={14} strokeWidth={2.2} />
+                        {/if}
+                      </span>
                     </button>
                   {/each}
                 </div>
@@ -609,8 +618,9 @@
                             class="ext-btn primary ext-btn-sm"
                             disabled={!canPlay || busy || !(pl.trackCount > 0)}
                             onclick={() => playPlaylist(pl.id)}
+                            aria-label="Přehrát"
                           >
-                            ▶
+                            <Play size={14} strokeWidth={2.2} />
                           </button>
                           <button
                             type="button"

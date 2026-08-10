@@ -1,3 +1,22 @@
+:root {
+  --bg: #1d1b1b;
+  --bg-soft: #262323;
+  --line: rgba(100, 176, 216, 0.14);
+  --text: #f2f4f5;
+  --muted: #9aa3a8;
+  --blue: #64b0d8;
+  --blue-dim: rgba(100, 176, 216, 0.18);
+  --red: #c73333;
+  --red-dim: rgba(199, 51, 51, 0.16);
+  --green: #44c733;
+  --green-dim: rgba(68, 199, 51, 0.16);
+  --yellow: #c7ae33;
+  --yellow-dim: rgba(199, 174, 51, 0.16);
+  --track: rgba(255, 255, 255, 0.1);
+  --font: 'Montserrat', system-ui, sans-serif;
+  --display: 'Montserrat', system-ui, sans-serif;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -13,7 +32,8 @@ body,
   height: 100%;
   background: transparent;
   overflow: hidden;
-  font-family: 'Outfit', sans-serif;
+  color: var(--text);
+  font-family: var(--font);
 }
 
 .hidden {
