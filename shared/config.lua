@@ -1,34 +1,35 @@
 Config = {}
 
-Config.Locale = 'cs'
+-- Locale pack: 'en' | 'cs' (see locales/)
+Config.Locale = 'en'
 Config.Debug = false
 
--- Zobrazit "NYN" prefix v NUI (pokud resource má UI)
+-- Show "NYN" prefix in the NUI brand
 Config.ShowNynPrefix = true
 
--- Placené rozšíření (drop-in). Command/keybind jsou v nyn_carradio_plus.
--- Tady jen zapneš/vypneš, jestli base UI bridge + open export fungují.
+-- Paid drop-in extension. Command / keybind live in nyn_carradio_plus.
+-- This only enables the base UI bridge + OpenExtension export.
 Config.EnableExtension = true
 Config.ExtensionResource = 'nyn_carradio_plus'
 
--- The default key used to trigger the car radio UI.
--- Players can also customize this in FiveM Key Bindings under "FiveM".
+-- Default key for the base car radio UI.
+-- Players can also remap it in FiveM Settings → Key Bindings → FiveM.
 Config.Keybind = 'Q'
 
--- Disable car radio in emergency vehicles (police, ambulance, fire – vehicle class 18)
+-- Disable car radio in emergency vehicles (police, ambulance, fire – class 18)
 Config.DisableInEmergency = true
 
--- Notify when radio is blocked / Plus missing / not in vehicle
+-- Notify when radio is blocked / Plus missing / not in a vehicle
 Config.NotifyOnBlocked = true
 
--- 'nyn_lib' = naše notifikace z nyn_lib | 'ox_lib' = ox_lib notify
+-- 'nyn_lib' = nyn_lib notifications | 'ox_lib' = ox_lib notify
 Config.Notify = 'nyn_lib'
 
 --[[
   Station types:
   1. "off"    - turns off all music
   2. "native" - GTA V radio stations
-  3. "stream" - custom URL stream (mp3/icecast) in HTML Audio
+  3. "stream" - custom URL stream (mp3/icecast) via HTML Audio
 ]]
 Config.Stations = {
     {
@@ -178,11 +179,4 @@ Config.Stations = {
         image = "RADIO_22_DLC_BATTLE_MIX1_RADIO.png",
         icon = "LSUR"
     },
-    {
-        name = "Spin",
-        type = "stream",
-        value = "https://icecast4.play.cz/spin128.mp3",
-        image = "https://www.radiospin.cz/assets/images/logo-spin-2022.png",
-        icon = "SPIN"
-    }
 }

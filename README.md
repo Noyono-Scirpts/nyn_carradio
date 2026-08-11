@@ -19,18 +19,19 @@ Modern synchronized car radio for FiveM — glassmorphic UI (Svelte), audio visu
 - Multiplayer sync for driver + passengers (native + streams)
 - Local logos (`ui/images/`) or HTTPS image URLs
 - Locales (`cs` / `en`) via `Config.Locale`
-- Emergency vehicle lockout (class 18) with optional `nyn_lib` notify
-- Extension shell — UI v base; command/keybind v `nyn_carradio_plus`
+- Emergency vehicle lockout (class 18) with optional notify
+- Extension shell — UI in base; command/keybind in `nyn_carradio_plus`
 
-## Car Radio+ (placené rozšíření)
+## Car Radio+ (paid extension)
 
-YouTube **i live streamy** ve vozidle přes `xsound` (jako boombox + streamy z base radia).
+YouTube **and live streams** in the vehicle via `xsound` (boombox-style + streams from base radio).
 
-**Cabin mix:** uvnitř plný zvuk → zvenku při zavřených dveřích jen dunění → otevřené dveře = slyšet normálně.
+**Cabin mix:** full volume inside → muffled outside with closed doors → clearer when doors are open.
 
-1. Nahraj `nyn_carradio_plus`
+1. Add `nyn_carradio_plus`
 2. `ensure xsound` + `ensure nyn_carradio` + `ensure nyn_carradio_plus`
-3. `/carradio` nebo keybind z `nyn_carradio_plus` config → Play URL (YT nebo `https://…/stream.mp3`)
+3. `/carradio` or the keybind from `nyn_carradio_plus` config → Play URL (YT or `https://…/stream.mp3`)
+
 ## Controls
 
 Default key: **`Q`** (Settings → Key Bindings → FiveM → Open car radio)
@@ -39,14 +40,14 @@ Default key: **`Q`** (Settings → Key Bindings → FiveM → Open car radio)
 - **Hold:** full carousel
 - **Scroll / arrows:** change station while UI open
 - **Release / Escape:** close UI
-- **Car Radio+:** v base `Config.EnableExtension = true`; command/keybind v `nyn_carradio_plus` (default `/carradio`, **F7**)
+- **Car Radio+:** set `Config.EnableExtension = true` in base; command/keybind live in `nyn_carradio_plus` (default `/carradio`, **F7**)
 
 ## Configuration
 
 Edit `shared/config.lua`:
 
 ```lua
-Config.Locale = 'cs'
+Config.Locale = 'en'
 Config.Debug = false
 Config.Keybind = 'Q'
 Config.EnableExtension = true
@@ -57,7 +58,8 @@ Config.Notify = 'nyn_lib' -- 'nyn_lib' | 'ox_lib'
 Config.Stations = { ... }
 ```
 
-Locales: `locales/cs.lua`, `locales/en.lua`
+Locales: `locales/cs.lua`, `locales/en.lua`  
+Plus UI strings use the same packs (`plus_*` keys).
 
 ## UI development (Svelte)
 

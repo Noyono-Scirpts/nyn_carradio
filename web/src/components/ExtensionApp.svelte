@@ -34,11 +34,68 @@
   let newPlaylistName = $state('')
   let trackUrlInput = $state('')
 
+  let locales = $state({
+    plus_tab_stations: 'Stations',
+    plus_tab_playlists: 'Playlists',
+    plus_tab_now: 'Now playing',
+    plus_tab_search: 'URL',
+    plus_status_paused: 'Paused',
+    plus_status_playing: 'Playing',
+    plus_status_idle: 'Idle',
+    plus_missing_title: 'nyn_carradio_plus missing',
+    plus_missing_body: 'Add the resource to your server and ensure it. Base Q radio works without Plus.',
+    plus_no_stations_title: 'No stations',
+    plus_no_stations_body: 'Add them in nyn_carradio_plus/shared/config.lua → Config.Stations.',
+    plus_station: 'Station',
+    plus_live_stream: 'Live stream',
+    plus_back: '← Back',
+    plus_tracks_count: '%s/%s tracks',
+    plus_play: 'Play',
+    plus_remove: 'Remove',
+    plus_no_tracks: 'No tracks — add a YouTube URL.',
+    plus_add: 'Add',
+    plus_playlist_name_ph: 'Playlist name',
+    plus_new: 'New',
+    plus_playlists_count: '%s/%s playlists',
+    plus_tracks_n: '%s tracks',
+    plus_open: 'Open',
+    plus_delete: 'Delete',
+    plus_no_playlists: 'No playlists yet.',
+    plus_nothing: 'Nothing playing',
+    plus_pick_hint: 'Pick a station or paste a URL.',
+    plus_volume: 'Volume',
+    plus_resume: 'Resume',
+    plus_pause: 'Pause',
+    plus_unmute: 'Unmute',
+    plus_stop: 'Stop',
+    plus_url_ph: 'YouTube / https://…/stream.mp3',
+    plus_need_url: 'Enter a YouTube or live stream URL.',
+    plus_playing: 'Playing…',
+    plus_sound_on: 'Sound enabled.',
+    plus_sound_xsound: 'Audio goes through xsound — use Pause/Resume in Now playing.',
+    plus_err_limit_playlists: 'Playlist limit reached.',
+    plus_err_limit_tracks: 'Track limit reached for this playlist.',
+    plus_err_invalid_url: 'YouTube links only.',
+    plus_err_empty: 'Playlist is empty.',
+    plus_err_no_db: 'Database unavailable (oxmysql).',
+    plus_err_forbidden: 'You cannot access this playlist.',
+    plus_err_disabled: 'Playlists are disabled.',
+    plus_err_timeout: 'Timed out — try again.',
+    plus_err_not_in_vehicle: 'You must be in a vehicle.',
+    plus_err_missing_extension: 'nyn_carradio_plus is missing.',
+    plus_err_load_failed: 'Failed to load playlist.',
+    plus_err_play_failed: 'Could not play playlist.',
+    plus_err_failed: 'Operation failed.',
+    plus_err_no_xsound: 'Cannot play — xsound is not running.',
+    plus_err_no_carradio: 'nyn_carradio is not running.',
+    plus_err_play_video: 'Could not play media.',
+  })
+
   const playlistsEnabled = $derived(!!extension.features?.playlists)
   const tabs = $derived.by(() => {
-    const list = [{ id: 'stations', label: 'Stanice' }]
-    if (playlistsEnabled) list.push({ id: 'playlists', label: 'Playlisty' })
-    list.push({ id: 'now', label: 'Teď hraje' }, { id: 'search', label: 'URL' })
+    const list = [{ id: 'stations', label: locales.plus_tab_stations }]
+    if (playlistsEnabled) list.push({ id: 'playlists', label: locales.plus_tab_playlists })
+    list.push({ id: 'now', label: locales.plus_tab_now }, { id: 'search', label: locales.plus_tab_search })
     return list
   })
 
@@ -51,7 +108,11 @@
     Math.min(100, Math.max(0, (localVolume / Math.max(maxVolumePct, 1)) * 100)),
   )
   const playingLabel = $derived(
-    playback?.paused ? 'Pozastaveno' : playback?.playing ? 'Přehrává se' : 'Nehraje',
+    playback?.paused
+      ? locales.plus_status_paused
+      : playback?.playing
+        ? locales.plus_status_playing
+        : locales.plus_status_idle,
   )
   const isLive = $derived(!!playback?.playing && !playback?.paused)
   const maxPlaylists = $derived(extension.playlistLimits?.maxPlaylists ?? 10)
@@ -61,6 +122,11 @@
     Array.isArray(selectedPlaylist?.tracks) ? selectedPlaylist.tracks : [],
   )
   const atTrackLimit = $derived(selectedTracks.length >= maxTracks)
+
+  function fmt(template, ...args) {
+    let i = 0
+    return String(template || '').replace(/%s/g, () => String(args[i++] ?? ''))
+  }
 
   function detectTitle(url) {
     if (/youtu\.?be/i.test(url)) return 'YouTube'
@@ -79,20 +145,20 @@
 
   function playlistError(error) {
     const map = {
-      limit_playlists: 'Dosáhl jsi limitu playlistů.',
-      limit_tracks: 'Dosáhl jsi limitu skladeb v playlistu.',
-      invalid_url: 'Pouze YouTube odkazy.',
-      empty: 'Playlist je prázdný.',
-      no_db: 'Databáze není dostupná (oxmysql).',
-      forbidden: 'Nemáš přístup k tomuto playlistu.',
-      disabled: 'Playlisty jsou vypnuté.',
-      timeout: 'Timeout — zkus znovu.',
-      not_in_vehicle: 'Musíš sedět ve vozidle.',
-      missing_extension: 'Chybí nyn_carradio_plus.',
-      load_failed: 'Playlist se nepodařilo načíst.',
-      play_failed: 'Playlist nelze přehrát.',
+      limit_playlists: locales.plus_err_limit_playlists,
+      limit_tracks: locales.plus_err_limit_tracks,
+      invalid_url: locales.plus_err_invalid_url,
+      empty: locales.plus_err_empty,
+      no_db: locales.plus_err_no_db,
+      forbidden: locales.plus_err_forbidden,
+      disabled: locales.plus_err_disabled,
+      timeout: locales.plus_err_timeout,
+      not_in_vehicle: locales.plus_err_not_in_vehicle,
+      missing_extension: locales.plus_err_missing_extension,
+      load_failed: locales.plus_err_load_failed,
+      play_failed: locales.plus_err_play_failed,
     }
-    return map[error] || 'Operace selhala.'
+    return map[error] || locales.plus_err_failed
   }
 
   function applyPlaylistLimits(limits) {
@@ -125,6 +191,9 @@
   }
 
   function open(payload = {}) {
+    if (payload.locales) {
+      locales = { ...locales, ...payload.locales }
+    }
     if (payload.extension) {
       extension = {
         ...extension,
@@ -170,7 +239,7 @@
     if (!canPlay || busy) return
     url = (url || '').trim()
     if (!url) {
-      statusMsg = 'Vlož YouTube nebo live stream URL.'
+      statusMsg = locales.plus_need_url
       return
     }
 
@@ -195,18 +264,18 @@
       activeStationUrl = url
       urlInput = url
       tab = 'now'
-      statusMsg = 'Přehrávám…'
+      statusMsg = locales.plus_playing
     } else {
       stopPlusMedia()
       const map = {
-        missing_extension: 'Chybí nyn_carradio_plus.',
-        not_in_vehicle: 'Musíš sedět ve vozidle.',
-        invalid_url: 'Neplatný YouTube / stream odkaz.',
-        no_xsound: 'Video nelze přehrát — xsound neběží.',
-        play_failed: 'Video nelze přehrát.',
-        no_carradio: 'nyn_carradio neběží.',
+        missing_extension: locales.plus_err_missing_extension,
+        not_in_vehicle: locales.plus_err_not_in_vehicle,
+        invalid_url: locales.plus_err_invalid_url,
+        no_xsound: locales.plus_err_no_xsound,
+        play_failed: locales.plus_err_play_failed,
+        no_carradio: locales.plus_err_no_carradio,
       }
-      statusMsg = map[res?.error] || 'Video nelze přehrát.'
+      statusMsg = map[res?.error] || locales.plus_err_play_video
     }
   }
 
@@ -344,7 +413,7 @@
         urlInput = url
       }
       tab = 'now'
-      statusMsg = 'Přehrávám…'
+      statusMsg = locales.plus_playing
     } else {
       stopPlusMedia()
       statusMsg = playlistError(res?.error)
@@ -370,7 +439,7 @@
 
   function unmuteClick() {
     const ok = forceUnmute()
-    statusMsg = ok ? 'Zvuk zapnutý.' : 'Zvuk jde přes xsound — Pause/Resume v Teď hraje.'
+    statusMsg = ok ? locales.plus_sound_on : locales.plus_sound_xsound
   }
 
   function onVolumeInput(e) {
@@ -468,17 +537,14 @@
           <div class="ext-pane">
             {#if !hasPlus}
               <div class="ext-empty">
-                <h3>Chybí nyn_carradio_plus</h3>
-                <p>Nahraj resource na server a ensure-ni ho. Základní Q rádio funguje bez Plus.</p>
+                <h3>{locales.plus_missing_title}</h3>
+                <p>{locales.plus_missing_body}</p>
               </div>
             {:else if tab === 'stations'}
               {#if stations.length === 0}
                 <div class="ext-empty">
-                  <h3>Žádné stanice</h3>
-                  <p>
-                    Přidej je do <code>nyn_carradio_plus/shared/config.lua</code> →
-                    <code>Config.Stations</code>.
-                  </p>
+                  <h3>{locales.plus_no_stations_title}</h3>
+                  <p>{locales.plus_no_stations_body}</p>
                 </div>
               {:else}
                 <div class="ext-station-list">
@@ -496,8 +562,8 @@
                         <div class="ext-station-art fallback">{stationInitial(station.name)}</div>
                       {/if}
                       <div class="ext-station-meta">
-                        <strong>{station.name || 'Stanice'}</strong>
-                        <span>{station.type === 'youtube' ? 'YouTube' : 'Live stream'}</span>
+                        <strong>{station.name || locales.plus_station}</strong>
+                        <span>{station.type === 'youtube' ? 'YouTube' : locales.plus_live_stream}</span>
                       </div>
                       <span class="ext-station-play">
                         {#if busy && activeStationUrl === station.url}
@@ -523,11 +589,11 @@
                       onclick={backToPlaylistList}
                       disabled={busy}
                     >
-                      ← Zpět
+                      {locales.plus_back}
                     </button>
                     <div class="ext-pl-detail-meta">
                       <strong>{selectedPlaylist.name || 'Playlist'}</strong>
-                      <span>{selectedTracks.length}/{maxTracks} skladeb</span>
+                      <span>{fmt(locales.plus_tracks_count, selectedTracks.length, maxTracks)}</span>
                     </div>
                     <button
                       type="button"
@@ -535,7 +601,7 @@
                       disabled={!canPlay || busy || selectedTracks.length === 0}
                       onclick={() => playPlaylist(selectedPlaylist.id)}
                     >
-                      {busy ? '…' : 'Přehrát'}
+                      {busy ? '…' : locales.plus_play}
                     </button>
                   </div>
 
@@ -552,11 +618,11 @@
                           disabled={busy}
                           onclick={() => removeTrack(track.id)}
                         >
-                          Odebrat
+                          {locales.plus_remove}
                         </button>
                       </div>
                     {:else}
-                      <div class="ext-pl-empty">Žádné skladby — přidej YouTube URL.</div>
+                      <div class="ext-pl-empty">{locales.plus_no_tracks}</div>
                     {/each}
                   </div>
 
@@ -574,7 +640,7 @@
                       disabled={busy || atTrackLimit || !trackUrlInput.trim()}
                       onclick={addTrack}
                     >
-                      Přidat
+                      {locales.plus_add}
                     </button>
                   </div>
                 {:else}
@@ -582,7 +648,7 @@
                     <input
                       type="text"
                       class="ext-input"
-                      placeholder="Název playlistu"
+                      placeholder={locales.plus_playlist_name_ph}
                       bind:value={newPlaylistName}
                       disabled={busy || atPlaylistLimit}
                     />
@@ -592,17 +658,17 @@
                       disabled={busy || atPlaylistLimit}
                       onclick={createPlaylist}
                     >
-                      Nový
+                      {locales.plus_new}
                     </button>
                   </div>
-                  <div class="ext-pl-hint">{playlists.length}/{maxPlaylists} playlistů</div>
+                  <div class="ext-pl-hint">{fmt(locales.plus_playlists_count, playlists.length, maxPlaylists)}</div>
 
                   <div class="ext-pl-list">
                     {#each playlists as pl (pl.id)}
                       <div class="ext-pl-row">
                         <div class="ext-pl-row-meta">
                           <strong>{pl.name || 'Playlist'}</strong>
-                          <span>{pl.trackCount ?? 0} skladeb</span>
+                          <span>{fmt(locales.plus_tracks_n, pl.trackCount ?? 0)}</span>
                         </div>
                         <div class="ext-pl-row-actions">
                           <button
@@ -611,14 +677,14 @@
                             disabled={busy}
                             onclick={() => openPlaylist(pl.id)}
                           >
-                            Otevřít
+                            {locales.plus_open}
                           </button>
                           <button
                             type="button"
                             class="ext-btn primary ext-btn-sm"
                             disabled={!canPlay || busy || !(pl.trackCount > 0)}
                             onclick={() => playPlaylist(pl.id)}
-                            aria-label="Přehrát"
+                            aria-label={locales.plus_play}
                           >
                             <Play size={14} strokeWidth={2.2} />
                           </button>
@@ -628,12 +694,12 @@
                             disabled={busy}
                             onclick={() => deletePlaylist(pl.id)}
                           >
-                            Smazat
+                            {locales.plus_delete}
                           </button>
                         </div>
                       </div>
                     {:else}
-                      <div class="ext-pl-empty">Zatím žádné playlisty.</div>
+                      <div class="ext-pl-empty">{locales.plus_no_playlists}</div>
                     {/each}
                   </div>
                 {/if}
@@ -646,8 +712,8 @@
                 <div class="ext-now-main">
                   <div class="ext-nowplaying-art" class:live={isLive}></div>
                   <div class="ext-nowplaying-meta">
-                    <strong>{playback?.title || 'Nic nehraje'}</strong>
-                    <span class="ext-now-url">{playback?.url || 'Vyber stanici nebo vlož URL.'}</span>
+                    <strong>{playback?.title || locales.plus_nothing}</strong>
+                    <span class="ext-now-url">{playback?.url || locales.plus_pick_hint}</span>
                     <div class="ext-viz" class:active={isLive} aria-hidden="true">
                       <span class="bar"></span>
                       <span class="bar"></span>
@@ -661,7 +727,7 @@
                 <div class="ext-controls">
                   <div class="ext-volume-block">
                     <div class="ext-volume-row">
-                      <span>Hlasitost</span>
+                      <span>{locales.plus_volume}</span>
                       <strong>{localVolume}%</strong>
                     </div>
                     <input
@@ -677,12 +743,12 @@
                   </div>
                   <div class="ext-transport">
                     {#if playback?.paused}
-                      <button type="button" class="ext-btn" onclick={resumeTrack}>Pokračovat</button>
+                      <button type="button" class="ext-btn" onclick={resumeTrack}>{locales.plus_resume}</button>
                     {:else if playback?.playing}
-                      <button type="button" class="ext-btn" onclick={pauseTrack}>Pauza</button>
+                      <button type="button" class="ext-btn" onclick={pauseTrack}>{locales.plus_pause}</button>
                     {/if}
-                    <button type="button" class="ext-btn" onclick={unmuteClick}>Zapnout zvuk</button>
-                    <button type="button" class="ext-btn danger" onclick={stopTrack} disabled={!playback}>Stop</button>
+                    <button type="button" class="ext-btn" onclick={unmuteClick}>{locales.plus_unmute}</button>
+                    <button type="button" class="ext-btn danger" onclick={stopTrack} disabled={!playback}>{locales.plus_stop}</button>
                   </div>
                 </div>
               </div>
@@ -695,17 +761,17 @@
                   <input
                     type="text"
                     class="ext-input"
-                    placeholder="YouTube / https://…/stream.mp3"
+                    placeholder={locales.plus_url_ph}
                     bind:value={urlInput}
                     disabled={!canPlay || busy}
                   />
                   <button type="button" class="ext-btn primary" onclick={playUrl} disabled={!canPlay || busy}>
-                    {busy ? '…' : 'Play'}
+                    {busy ? '…' : locales.plus_play}
                   </button>
                 </div>
                 <div class="ext-volume-block">
                   <div class="ext-volume-row">
-                    <span>Hlasitost</span>
+                    <span>{locales.plus_volume}</span>
                     <strong>{localVolume}%</strong>
                   </div>
                   <input
