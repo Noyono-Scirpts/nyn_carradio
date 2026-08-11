@@ -33,12 +33,6 @@ dependencies {
     'ox_lib',
 }
 
---[[
-  Escrow (Cfx.re Keymaster):
-  - PROTECTED: client/, server/, shared locale helper, ui build
-  - OPEN (editable): config, locales, fxmanifest, README
-  - UI source (web/) is for development; ship built ui/
-]]
 escrow_ignore {
     'fxmanifest.lua',
     'shared/config.lua',
