@@ -1,12 +1,17 @@
 <script>
   import { onMount } from 'svelte'
-  import { X, Play, LoaderCircle } from '@lucide/svelte'
+  import { X, Play, LoaderCircle, ListPlus, SkipForward } from '@lucide/svelte'
   import { nuiCallback, onNuiMessage } from '../lib/nui.js'
   import {
     stopPlusMedia,
     setPlusVolume,
-    forceUnmute,
   } from '../lib/plusMedia.js'
+  import {
+    fetchYoutubeMeta,
+    fetchYoutubeMetaBatch,
+    youtubeThumb,
+    isGenericTitle,
+  } from '../lib/youtubeMeta.js'
   import '../styles/extension.css'
 
   let visible = $state(false)
@@ -33,6 +38,9 @@
   let selectedPlaylist = $state(null)
   let newPlaylistName = $state('')
   let trackUrlInput = $state('')
+  let showPlaylistPicker = $state(false)
+  let renamingId = $state(null)
+  let renameInput = $state('')
 
   let locales = $state({
     plus_tab_stations: 'Stations',
@@ -60,19 +68,30 @@
     plus_tracks_n: '%s tracks',
     plus_open: 'Open',
     plus_delete: 'Delete',
+    plus_rename: 'Rename',
+    plus_duplicate: 'Duplicate',
+    plus_save: 'Save',
+    plus_cancel: 'Cancel',
+    plus_renamed: 'Playlist renamed.',
+    plus_duplicated: 'Playlist duplicated.',
+    plus_copy_suffix: '%s (copy)',
     plus_no_playlists: 'No playlists yet.',
     plus_nothing: 'Nothing playing',
     plus_pick_hint: 'Pick a station or paste a URL.',
     plus_volume: 'Volume',
     plus_resume: 'Resume',
     plus_pause: 'Pause',
-    plus_unmute: 'Unmute',
     plus_stop: 'Stop',
+    plus_skip: 'Skip',
+    plus_queue: 'Queue',
+    plus_queued: 'Added to queue (%s)',
+    plus_queue_hint: '%s / %s in queue',
+    plus_queue_now: 'Now',
+    plus_queue_next: 'Up next',
+    plus_queue_empty: 'Queue is empty — paste a YouTube link and hit Queue.',
     plus_url_ph: 'YouTube / https://…/stream.mp3',
     plus_need_url: 'Enter a YouTube or live stream URL.',
     plus_playing: 'Playing…',
-    plus_sound_on: 'Sound enabled.',
-    plus_sound_xsound: 'Audio goes through xsound — use Pause/Resume in Now playing.',
     plus_err_limit_playlists: 'Playlist limit reached.',
     plus_err_limit_tracks: 'Track limit reached for this playlist.',
     plus_err_invalid_url: 'YouTube links only.',
@@ -89,13 +108,18 @@
     plus_err_no_xsound: 'Cannot play — xsound is not running.',
     plus_err_no_carradio: 'nyn_carradio is not running.',
     plus_err_play_video: 'Could not play media.',
+    plus_add_to_playlist: 'Add to playlist',
+    plus_pick_playlist: 'Save to…',
+    plus_saved_to_playlist: 'Added to %s',
+    plus_streams_no_playlist: 'Only YouTube links can be saved to playlists.',
+    plus_create_playlist_first: 'Create a playlist first.',
   })
 
   const playlistsEnabled = $derived(!!extension.features?.playlists)
   const tabs = $derived.by(() => {
     const list = [{ id: 'stations', label: locales.plus_tab_stations }]
     if (playlistsEnabled) list.push({ id: 'playlists', label: locales.plus_tab_playlists })
-    list.push({ id: 'now', label: locales.plus_tab_now }, { id: 'search', label: locales.plus_tab_search })
+    list.push({ id: 'now', label: locales.plus_tab_now })
     return list
   })
 
@@ -122,6 +146,15 @@
     Array.isArray(selectedPlaylist?.tracks) ? selectedPlaylist.tracks : [],
   )
   const atTrackLimit = $derived(selectedTracks.length >= maxTracks)
+  const saveableUrl = $derived((playback?.url || urlInput || '').trim())
+  const canSaveToPlaylist = $derived(playlistsEnabled && !!saveableUrl && isYoutubeUrl(saveableUrl))
+  const queueTracks = $derived(
+    Array.isArray(playback?.playlist?.tracks) ? playback.playlist.tracks : [],
+  )
+  const queueIndex = $derived(Math.max(1, Number(playback?.playlist?.index) || 1))
+  const queueTotal = $derived(queueTracks.length)
+  const canSkip = $derived(queueTotal > 0 && queueIndex < queueTotal)
+  const canQueueUrl = $derived(!!urlInput.trim() && isYoutubeUrl(urlInput.trim()))
 
   function fmt(template, ...args) {
     let i = 0
@@ -131,6 +164,100 @@
   function detectTitle(url) {
     if (/youtu\.?be/i.test(url)) return 'YouTube'
     return 'Live Radio'
+  }
+
+  async function resolvePlayMeta(url, fallbackTitle) {
+    const trimmed = (url || '').trim()
+    if (!isYoutubeUrl(trimmed)) {
+      return {
+        title: fallbackTitle || detectTitle(trimmed),
+        thumbnail: '',
+      }
+    }
+    const meta = await fetchYoutubeMeta(trimmed)
+    return {
+      title:
+        meta?.title && !isGenericTitle(meta.title)
+          ? meta.title
+          : fallbackTitle && !isGenericTitle(fallbackTitle)
+            ? fallbackTitle
+            : meta?.title || fallbackTitle || 'YouTube',
+      thumbnail: meta?.thumbnail || youtubeThumb(trimmed) || '',
+    }
+  }
+
+  function trackArt(url, thumb) {
+    if (thumb) return thumb
+    return youtubeThumb(url) || ''
+  }
+
+  /** Soft enrich generic titles after sync — never blocks playback. */
+  async function enrichPlaybackMeta(state) {
+    if (!state?.url || !isYoutubeUrl(state.url)) return
+    if (state.title && !isGenericTitle(state.title) && state.thumbnail) {
+      await enrichPlaylistLikeTracks(state)
+      return
+    }
+    const meta = await fetchYoutubeMeta(state.url)
+    if (!meta) return
+    // Only patch if still same URL
+    if (playback?.url !== state.url) return
+    playback = {
+      ...playback,
+      title:
+        isGenericTitle(playback.title) && meta.title && !isGenericTitle(meta.title)
+          ? meta.title
+          : playback.title || meta.title,
+      thumbnail: playback.thumbnail || meta.thumbnail,
+    }
+    await enrichPlaylistLikeTracks(playback)
+  }
+
+  async function enrichPlaylistLikeTracks(state) {
+    const tracks = state?.playlist?.tracks
+    if (!Array.isArray(tracks) || !tracks.length) return
+    const need = tracks.filter((t) => t?.url && isGenericTitle(t.title)).map((t) => t.url)
+    if (!need.length) return
+    const results = await fetchYoutubeMetaBatch(need)
+    if (playback?.url !== state.url && playback?.playlist !== state.playlist) {
+      // still apply if same playlist object on current playback
+    }
+    if (!playback?.playlist?.tracks) return
+    let changed = false
+    const nextTracks = playback.playlist.tracks.map((t) => {
+      const hit = results[t.url]
+      if (hit?.title && isGenericTitle(t.title) && !isGenericTitle(hit.title)) {
+        changed = true
+        return { ...t, title: hit.title }
+      }
+      return t
+    })
+    if (changed) {
+      playback = {
+        ...playback,
+        playlist: { ...playback.playlist, tracks: nextTracks },
+      }
+    }
+  }
+
+  async function enrichSelectedPlaylistTracks(tracks) {
+    if (!Array.isArray(tracks) || !tracks.length || !selectedPlaylist) return
+    const need = tracks.filter((t) => t?.url && isGenericTitle(t.title)).map((t) => t.url)
+    if (!need.length) return
+    const results = await fetchYoutubeMetaBatch(need)
+    if (!selectedPlaylist) return
+    let changed = false
+    const nextTracks = (selectedPlaylist.tracks || []).map((t) => {
+      const hit = results[t.url]
+      if (hit?.title && isGenericTitle(t.title) && !isGenericTitle(hit.title)) {
+        changed = true
+        return { ...t, title: hit.title }
+      }
+      return t
+    })
+    if (changed) {
+      selectedPlaylist = { ...selectedPlaylist, tracks: nextTracks }
+    }
   }
 
   function isYoutubeUrl(url) {
@@ -185,7 +312,8 @@
 
   async function selectTab(id) {
     tab = id
-    if (id === 'playlists' && playlistsEnabled) {
+    showPlaylistPicker = false
+    if ((id === 'playlists' || id === 'now') && playlistsEnabled) {
       await refreshPlaylists()
     }
   }
@@ -208,7 +336,13 @@
       if (typeof def === 'number') localVolume = Math.round(def * 100)
     }
     if (payload.state) {
-      playback = payload.state
+      playback = {
+        ...payload.state,
+        thumbnail:
+          payload.state.thumbnail ||
+          (isYoutubeUrl(payload.state.url) ? youtubeThumb(payload.state.url) : '') ||
+          '',
+      }
       if (payload.state.url) {
         urlInput = payload.state.url
         activeStationUrl = payload.state.url
@@ -216,8 +350,9 @@
       if (typeof payload.state.volume === 'number') {
         localVolume = Math.round(payload.state.volume * 100)
       }
+      enrichPlaybackMeta(playback)
     }
-    tab = payload.tab || (stations.length ? 'stations' : 'search')
+    tab = payload.tab || (stations.length ? 'stations' : 'now')
     visible = true
     requestAnimationFrame(() => {
       mountedVisible = true
@@ -243,7 +378,8 @@
       return
     }
 
-    const resolvedTitle = title || detectTitle(url)
+    const meta = await resolvePlayMeta(url, title)
+    const resolvedTitle = meta.title
     const volume = localVolume / 100
 
     // Always xsound from Lua — starting NUI here caused duplicate (NUI + PlayUrlPos)
@@ -254,13 +390,21 @@
     const res = await nuiCallback('extensionPlay', {
       url,
       title: resolvedTitle,
+      thumbnail: meta.thumbnail || undefined,
       volume,
       clientPlaying: false,
     })
     busy = false
 
     if (res?.ok) {
-      playback = { url, title: resolvedTitle, playing: true, paused: false, volume }
+      playback = {
+        url,
+        title: resolvedTitle,
+        thumbnail: meta.thumbnail || '',
+        playing: true,
+        paused: false,
+        volume,
+      }
       activeStationUrl = url
       urlInput = url
       tab = 'now'
@@ -283,6 +427,63 @@
     await startPlay(urlInput, detectTitle(urlInput.trim()))
   }
 
+  async function queueUrl() {
+    if (!canPlay || busy) return
+    const url = (urlInput || '').trim()
+    if (!url) {
+      statusMsg = locales.plus_need_url
+      return
+    }
+    if (!isYoutubeUrl(url)) {
+      statusMsg = playlistError('invalid_url')
+      return
+    }
+
+    const meta = await resolvePlayMeta(url)
+    const title = meta.title
+    const volume = localVolume / 100
+    busy = true
+    statusMsg = ''
+    const res = await nuiCallback('extensionQueue', {
+      url,
+      title,
+      thumbnail: meta.thumbnail || undefined,
+      volume,
+    })
+    busy = false
+
+    if (res?.ok) {
+      tab = 'now'
+      const total = (playback?.playlist?.tracks?.length || 0) + (playback?.playlist ? 1 : 1)
+      statusMsg = fmt(locales.plus_queued, String(total))
+      // Optimistic: extensionState sync will refresh exact playlist
+      if (!playback) {
+        playback = {
+          url,
+          title,
+          thumbnail: meta.thumbnail || '',
+          playing: true,
+          paused: false,
+          volume,
+          playlist: { name: 'Queue', index: 1, tracks: [{ url, title }] },
+        }
+      }
+    } else {
+      statusMsg = playlistError(res?.error) || locales.plus_err_play_failed
+    }
+  }
+
+  async function skipTrack() {
+    if (!canPlay || busy || !canSkip) return
+    busy = true
+    statusMsg = ''
+    const res = await nuiCallback('extensionSkip')
+    busy = false
+    if (!res?.ok) {
+      statusMsg = playlistError(res?.error) || locales.plus_err_failed
+    }
+  }
+
   async function playStation(station) {
     if (!station?.url) return
     await startPlay(station.url, station.name || detectTitle(station.url))
@@ -298,6 +499,7 @@
       selectedPlaylist = res.playlist
       applyPlaylistLimits(res.limits)
       trackUrlInput = ''
+      enrichSelectedPlaylistTracks(res.playlist.tracks)
     } else {
       statusMsg = playlistError(res?.error)
     }
@@ -333,8 +535,72 @@
     busy = false
     if (res?.ok) {
       if (selectedPlaylist?.id === id) selectedPlaylist = null
+      if (renamingId === id) {
+        renamingId = null
+        renameInput = ''
+      }
       if (Array.isArray(res.playlists)) playlists = res.playlists
       else await refreshPlaylists()
+    } else {
+      statusMsg = playlistError(res?.error)
+    }
+  }
+
+  function startRename(pl) {
+    if (!pl?.id || busy) return
+    renamingId = pl.id
+    renameInput = pl.name || ''
+  }
+
+  function cancelRename() {
+    renamingId = null
+    renameInput = ''
+  }
+
+  async function saveRename(id) {
+    if (busy || !id) return
+    const name = (renameInput || '').trim()
+    if (!name) {
+      statusMsg = locales.plus_playlist_name_ph
+      return
+    }
+    busy = true
+    statusMsg = ''
+    const res = await nuiCallback('extensionPlaylist', {
+      action: 'rename',
+      payload: { id, name },
+    })
+    busy = false
+    if (res?.ok) {
+      renamingId = null
+      renameInput = ''
+      if (Array.isArray(res.playlists)) playlists = res.playlists
+      else await refreshPlaylists()
+      if (selectedPlaylist?.id === id) {
+        selectedPlaylist = { ...selectedPlaylist, name }
+      }
+      statusMsg = locales.plus_renamed
+    } else {
+      statusMsg = playlistError(res?.error)
+    }
+  }
+
+  async function duplicatePlaylist(id, name) {
+    if (busy || !id || atPlaylistLimit) return
+    busy = true
+    statusMsg = ''
+    const res = await nuiCallback('extensionPlaylist', {
+      action: 'duplicate',
+      payload: {
+        id,
+        name: fmt(locales.plus_copy_suffix, name || 'Playlist'),
+      },
+    })
+    busy = false
+    if (res?.ok) {
+      if (Array.isArray(res.playlists)) playlists = res.playlists
+      else await refreshPlaylists()
+      statusMsg = locales.plus_duplicated
     } else {
       statusMsg = playlistError(res?.error)
     }
@@ -347,27 +613,66 @@
       statusMsg = playlistError('invalid_url')
       return
     }
+    await addUrlToPlaylist(selectedPlaylist.id, url, (await resolvePlayMeta(url)).title)
+    trackUrlInput = ''
+  }
+
+  async function addUrlToPlaylist(playlistId, url, title) {
+    if (!playlistId || busy || !url || !isYoutubeUrl(url)) {
+      statusMsg = playlistError('invalid_url')
+      return false
+    }
+
     busy = true
     statusMsg = ''
     const res = await nuiCallback('extensionPlaylist', {
       action: 'addTrack',
       payload: {
-        playlistId: selectedPlaylist.id,
+        playlistId,
         url,
-        title: detectTitle(url),
+        title: title || detectTitle(url),
       },
     })
     busy = false
+
     if (res?.ok) {
-      trackUrlInput = ''
-      if (Array.isArray(res.tracks)) {
+      const pl = playlists.find((p) => p.id === playlistId)
+      statusMsg = fmt(locales.plus_saved_to_playlist, pl?.name || 'Playlist')
+      showPlaylistPicker = false
+      if (selectedPlaylist?.id === playlistId && Array.isArray(res.tracks)) {
         selectedPlaylist = { ...selectedPlaylist, tracks: res.tracks }
-      } else {
-        await openPlaylist(selectedPlaylist.id)
       }
       if (Array.isArray(res.playlists)) playlists = res.playlists
-    } else {
-      statusMsg = playlistError(res?.error)
+      else await refreshPlaylists()
+      return true
+    }
+
+    statusMsg = playlistError(res?.error)
+    return false
+  }
+
+  function togglePlaylistPicker() {
+    if (!canSaveToPlaylist) {
+      statusMsg = locales.plus_streams_no_playlist
+      return
+    }
+    if (!playlists.length) {
+      statusMsg = locales.plus_create_playlist_first
+      return
+    }
+    showPlaylistPicker = !showPlaylistPicker
+  }
+
+  async function quickAddToPlaylist(playlistId) {
+    const url = saveableUrl
+    const title = playback?.title || detectTitle(url)
+    await addUrlToPlaylist(playlistId, url, title)
+  }
+
+  function onUrlKeydown(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      playUrl()
     }
   }
 
@@ -407,7 +712,21 @@
       const meta = playlists.find((p) => p.id === id)
       const title = first?.title || detail?.name || meta?.name || 'Playlist'
       const url = first?.url || ''
-      playback = { url, title, playing: true, paused: false, volume }
+      const tracks = Array.isArray(detail?.tracks)
+        ? detail.tracks.map((t) => ({ url: t.url, title: t.title || 'YouTube' }))
+        : url
+          ? [{ url, title }]
+          : []
+      playback = {
+        url,
+        title,
+        playing: true,
+        paused: false,
+        volume,
+        playlist: tracks.length
+          ? { id, name: detail?.name || meta?.name || 'Playlist', index: 1, tracks }
+          : undefined,
+      }
       if (url) {
         activeStationUrl = url
         urlInput = url
@@ -437,11 +756,6 @@
     activeStationUrl = ''
   }
 
-  function unmuteClick() {
-    const ok = forceUnmute()
-    statusMsg = ok ? locales.plus_sound_on : locales.plus_sound_xsound
-  }
-
   function onVolumeInput(e) {
     localVolume = Number(e.currentTarget.value)
     setPlusVolume(localVolume / 100)
@@ -458,17 +772,33 @@
 
   onMount(() => {
     const off = onNuiMessage((data) => {
-      if (data.action === 'openExtension') {
+      if (data.action === 'init' && data.locales) {
+        locales = { ...locales, ...data.locales }
+      } else if (data.action === 'openExtension') {
         open(data)
       } else if (data.action === 'closeExtension') {
         mountedVisible = false
         setTimeout(() => {
           visible = false
         }, 220)
+      } else if (data.action === 'playlistTracksEnriched') {
+        if (
+          selectedPlaylist?.id === data.playlistId &&
+          Array.isArray(data.tracks)
+        ) {
+          selectedPlaylist = { ...selectedPlaylist, tracks: data.tracks }
+        }
       } else if (data.action === 'extensionState') {
         // Shared track sync for passengers (and live updates while UI open)
         if (data.state) {
-          playback = data.state
+          const next = {
+            ...data.state,
+            thumbnail:
+              data.state.thumbnail ||
+              (isYoutubeUrl(data.state.url) ? youtubeThumb(data.state.url) : '') ||
+              '',
+          }
+          playback = next
           if (data.state.url) {
             urlInput = data.state.url
             activeStationUrl = data.state.url
@@ -476,6 +806,7 @@
           if (typeof data.state.volume === 'number') {
             localVolume = Math.round(data.state.volume * 100)
           }
+          enrichPlaybackMeta(next)
         } else {
           playback = null
           activeStationUrl = ''
@@ -592,22 +923,76 @@
                       {locales.plus_back}
                     </button>
                     <div class="ext-pl-detail-meta">
-                      <strong>{selectedPlaylist.name || 'Playlist'}</strong>
-                      <span>{fmt(locales.plus_tracks_count, selectedTracks.length, maxTracks)}</span>
+                      {#if renamingId === selectedPlaylist.id}
+                        <div class="ext-pl-rename-row">
+                          <input
+                            type="text"
+                            class="ext-input"
+                            bind:value={renameInput}
+                            disabled={busy}
+                            onkeydown={(e) => {
+                              if (e.key === 'Enter') saveRename(selectedPlaylist.id)
+                              if (e.key === 'Escape') cancelRename()
+                            }}
+                          />
+                          <button
+                            type="button"
+                            class="ext-btn primary ext-btn-sm"
+                            disabled={busy || !renameInput.trim()}
+                            onclick={() => saveRename(selectedPlaylist.id)}
+                          >
+                            {locales.plus_save}
+                          </button>
+                          <button
+                            type="button"
+                            class="ext-btn ext-btn-sm"
+                            disabled={busy}
+                            onclick={cancelRename}
+                          >
+                            {locales.plus_cancel}
+                          </button>
+                        </div>
+                      {:else}
+                        <strong>{selectedPlaylist.name || 'Playlist'}</strong>
+                        <span>{fmt(locales.plus_tracks_count, selectedTracks.length, maxTracks)}</span>
+                      {/if}
                     </div>
-                    <button
-                      type="button"
-                      class="ext-btn primary"
-                      disabled={!canPlay || busy || selectedTracks.length === 0}
-                      onclick={() => playPlaylist(selectedPlaylist.id)}
-                    >
-                      {busy ? '…' : locales.plus_play}
-                    </button>
+                    <div class="ext-pl-detail-actions">
+                      {#if renamingId !== selectedPlaylist.id}
+                        <button
+                          type="button"
+                          class="ext-btn ext-btn-sm"
+                          disabled={busy}
+                          onclick={() => startRename(selectedPlaylist)}
+                        >
+                          {locales.plus_rename}
+                        </button>
+                        <button
+                          type="button"
+                          class="ext-btn ext-btn-sm"
+                          disabled={busy || atPlaylistLimit}
+                          onclick={() => duplicatePlaylist(selectedPlaylist.id, selectedPlaylist.name)}
+                        >
+                          {locales.plus_duplicate}
+                        </button>
+                      {/if}
+                      <button
+                        type="button"
+                        class="ext-btn primary"
+                        disabled={!canPlay || busy || selectedTracks.length === 0}
+                        onclick={() => playPlaylist(selectedPlaylist.id)}
+                      >
+                        {busy ? '…' : locales.plus_play}
+                      </button>
+                    </div>
                   </div>
 
                   <div class="ext-pl-tracks">
                     {#each selectedTracks as track (track.id)}
                       <div class="ext-pl-track">
+                        {#if trackArt(track.url)}
+                          <img class="ext-pl-track-thumb" src={trackArt(track.url)} alt="" />
+                        {/if}
                         <div class="ext-pl-track-meta">
                           <strong>{track.title || 'YouTube'}</strong>
                           <span>{truncateUrl(track.url)}</span>
@@ -667,35 +1052,84 @@
                     {#each playlists as pl (pl.id)}
                       <div class="ext-pl-row">
                         <div class="ext-pl-row-meta">
-                          <strong>{pl.name || 'Playlist'}</strong>
-                          <span>{fmt(locales.plus_tracks_n, pl.trackCount ?? 0)}</span>
+                          {#if renamingId === pl.id}
+                            <div class="ext-pl-rename-row">
+                              <input
+                                type="text"
+                                class="ext-input"
+                                bind:value={renameInput}
+                                disabled={busy}
+                                onkeydown={(e) => {
+                                  if (e.key === 'Enter') saveRename(pl.id)
+                                  if (e.key === 'Escape') cancelRename()
+                                }}
+                              />
+                              <button
+                                type="button"
+                                class="ext-btn primary ext-btn-sm"
+                                disabled={busy || !renameInput.trim()}
+                                onclick={() => saveRename(pl.id)}
+                              >
+                                {locales.plus_save}
+                              </button>
+                              <button
+                                type="button"
+                                class="ext-btn ext-btn-sm"
+                                disabled={busy}
+                                onclick={cancelRename}
+                              >
+                                {locales.plus_cancel}
+                              </button>
+                            </div>
+                          {:else}
+                            <strong>{pl.name || 'Playlist'}</strong>
+                            <span>{fmt(locales.plus_tracks_n, pl.trackCount ?? 0)}</span>
+                          {/if}
                         </div>
                         <div class="ext-pl-row-actions">
-                          <button
-                            type="button"
-                            class="ext-btn ext-btn-sm"
-                            disabled={busy}
-                            onclick={() => openPlaylist(pl.id)}
-                          >
-                            {locales.plus_open}
-                          </button>
-                          <button
-                            type="button"
-                            class="ext-btn primary ext-btn-sm"
-                            disabled={!canPlay || busy || !(pl.trackCount > 0)}
-                            onclick={() => playPlaylist(pl.id)}
-                            aria-label={locales.plus_play}
-                          >
-                            <Play size={14} strokeWidth={2.2} />
-                          </button>
-                          <button
-                            type="button"
-                            class="ext-btn danger ext-btn-sm"
-                            disabled={busy}
-                            onclick={() => deletePlaylist(pl.id)}
-                          >
-                            {locales.plus_delete}
-                          </button>
+                          {#if renamingId !== pl.id}
+                            <button
+                              type="button"
+                              class="ext-btn ext-btn-sm"
+                              disabled={busy}
+                              onclick={() => openPlaylist(pl.id)}
+                            >
+                              {locales.plus_open}
+                            </button>
+                            <button
+                              type="button"
+                              class="ext-btn ext-btn-sm"
+                              disabled={busy}
+                              onclick={() => startRename(pl)}
+                            >
+                              {locales.plus_rename}
+                            </button>
+                            <button
+                              type="button"
+                              class="ext-btn ext-btn-sm"
+                              disabled={busy || atPlaylistLimit}
+                              onclick={() => duplicatePlaylist(pl.id, pl.name)}
+                            >
+                              {locales.plus_duplicate}
+                            </button>
+                            <button
+                              type="button"
+                              class="ext-btn primary ext-btn-sm"
+                              disabled={!canPlay || busy || !(pl.trackCount > 0)}
+                              onclick={() => playPlaylist(pl.id)}
+                              aria-label={locales.plus_play}
+                            >
+                              <Play size={14} strokeWidth={2.2} />
+                            </button>
+                            <button
+                              type="button"
+                              class="ext-btn danger ext-btn-sm"
+                              disabled={busy}
+                              onclick={() => deletePlaylist(pl.id)}
+                            >
+                              {locales.plus_delete}
+                            </button>
+                          {/if}
                         </div>
                       </div>
                     {:else}
@@ -709,11 +1143,38 @@
               {/if}
             {:else if tab === 'now'}
               <div class="ext-now">
+                <div class="ext-url-row">
+                  <input
+                    type="text"
+                    class="ext-input"
+                    placeholder={locales.plus_url_ph}
+                    bind:value={urlInput}
+                    disabled={!canPlay || busy}
+                    onkeydown={onUrlKeydown}
+                  />
+                  <button type="button" class="ext-btn primary" onclick={playUrl} disabled={!canPlay || busy}>
+                    {busy ? '…' : locales.plus_play}
+                  </button>
+                  <button
+                    type="button"
+                    class="ext-btn"
+                    onclick={queueUrl}
+                    disabled={!canPlay || busy || !canQueueUrl}
+                    title={locales.plus_queue}
+                  >
+                    {locales.plus_queue}
+                  </button>
+                </div>
+
                 <div class="ext-now-main">
-                  <div class="ext-nowplaying-art" class:live={isLive}></div>
+                  <div class="ext-nowplaying-art" class:live={isLive} class:has-img={!!trackArt(playback?.url, playback?.thumbnail)}>
+                    {#if trackArt(playback?.url, playback?.thumbnail)}
+                      <img src={trackArt(playback.url, playback.thumbnail)} alt="" />
+                    {/if}
+                  </div>
                   <div class="ext-nowplaying-meta">
                     <strong>{playback?.title || locales.plus_nothing}</strong>
-                    <span class="ext-now-url">{playback?.url || locales.plus_pick_hint}</span>
+                    <span class="ext-now-url">{playback?.url || saveableUrl || locales.plus_pick_hint}</span>
                     <div class="ext-viz" class:active={isLive} aria-hidden="true">
                       <span class="bar"></span>
                       <span class="bar"></span>
@@ -723,6 +1184,73 @@
                     </div>
                   </div>
                 </div>
+
+                {#if queueTotal > 0}
+                  <div class="ext-queue">
+                    <div class="ext-queue-head">
+                      <span class="ext-queue-title">{playback?.playlist?.name || locales.plus_queue}</span>
+                      <span class="ext-queue-count">{fmt(locales.plus_queue_hint, queueIndex, queueTotal)}</span>
+                    </div>
+                    <div class="ext-queue-list" role="list">
+                      {#each queueTracks as track, i (track.url + '-' + i)}
+                        {@const pos = i + 1}
+                        {@const isCurrent = pos === queueIndex}
+                        {@const isPast = pos < queueIndex}
+                        <div
+                          class="ext-queue-item"
+                          class:current={isCurrent}
+                          class:past={isPast}
+                          role="listitem"
+                        >
+                          <span class="ext-queue-pos">
+                            {#if isCurrent}{locales.plus_queue_now}{:else if pos === queueIndex + 1}{locales.plus_queue_next}{:else}{pos}{/if}
+                          </span>
+                          {#if trackArt(track.url)}
+                            <img class="ext-queue-thumb" src={trackArt(track.url)} alt="" />
+                          {/if}
+                          <div class="ext-queue-meta">
+                            <strong>{track.title || 'YouTube'}</strong>
+                            <span>{truncateUrl(track.url, 36)}</span>
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+
+                {#if playlistsEnabled}
+                  <div class="ext-quick-pl">
+                    <button
+                      type="button"
+                      class="ext-btn ext-quick-pl-btn"
+                      disabled={busy || !canSaveToPlaylist}
+                      onclick={togglePlaylistPicker}
+                      title={canSaveToPlaylist ? locales.plus_add_to_playlist : locales.plus_streams_no_playlist}
+                    >
+                      <ListPlus size={15} strokeWidth={2.2} />
+                      <span>{locales.plus_add_to_playlist}</span>
+                    </button>
+
+                    {#if showPlaylistPicker && playlists.length > 0}
+                      <div class="ext-pl-picker" role="listbox" aria-label={locales.plus_pick_playlist}>
+                        <span class="ext-pl-picker-label">{locales.plus_pick_playlist}</span>
+                        <div class="ext-pl-picker-list">
+                          {#each playlists as pl (pl.id)}
+                            <button
+                              type="button"
+                              class="ext-pl-picker-item"
+                              disabled={busy || (pl.trackCount ?? 0) >= maxTracks}
+                              onclick={() => quickAddToPlaylist(pl.id)}
+                            >
+                              <strong>{pl.name || 'Playlist'}</strong>
+                              <span>{fmt(locales.plus_tracks_n, pl.trackCount ?? 0)}</span>
+                            </button>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
 
                 <div class="ext-controls">
                   <div class="ext-volume-block">
@@ -747,7 +1275,16 @@
                     {:else if playback?.playing}
                       <button type="button" class="ext-btn" onclick={pauseTrack}>{locales.plus_pause}</button>
                     {/if}
-                    <button type="button" class="ext-btn" onclick={unmuteClick}>{locales.plus_unmute}</button>
+                    <button
+                      type="button"
+                      class="ext-btn"
+                      onclick={skipTrack}
+                      disabled={!playback || busy || !canSkip}
+                      title={locales.plus_skip}
+                    >
+                      <SkipForward size={14} strokeWidth={2.2} />
+                      <span>{locales.plus_skip}</span>
+                    </button>
                     <button type="button" class="ext-btn danger" onclick={stopTrack} disabled={!playback}>{locales.plus_stop}</button>
                   </div>
                 </div>
@@ -755,40 +1292,6 @@
               {#if statusMsg}
                 <p class="ext-status">{statusMsg}</p>
               {/if}
-            {:else}
-              <div class="ext-url">
-                <div class="ext-url-row">
-                  <input
-                    type="text"
-                    class="ext-input"
-                    placeholder={locales.plus_url_ph}
-                    bind:value={urlInput}
-                    disabled={!canPlay || busy}
-                  />
-                  <button type="button" class="ext-btn primary" onclick={playUrl} disabled={!canPlay || busy}>
-                    {busy ? '…' : locales.plus_play}
-                  </button>
-                </div>
-                <div class="ext-volume-block">
-                  <div class="ext-volume-row">
-                    <span>{locales.plus_volume}</span>
-                    <strong>{localVolume}%</strong>
-                  </div>
-                  <input
-                    class="ext-volume"
-                    type="range"
-                    min="0"
-                    max={maxVolumePct}
-                    step="1"
-                    value={localVolume}
-                    style="--fill: {volumeFill}%"
-                    oninput={onVolumeInput}
-                  />
-                </div>
-                {#if statusMsg}
-                  <p class="ext-status">{statusMsg}</p>
-                {/if}
-              </div>
             {/if}
           </div>
         {/key}

@@ -8,6 +8,19 @@ local uiOpened = false
 local currentStation = nil -- last applied station (for native keep-alive)
 local isExtensionOpen = false
 
+local uiLocales = nil
+local nuiBootstrapped = false
+
+local cachedVehicle = 0
+local cachedIsEmergency = false
+local cachedPlusActive = false
+local lastPlusCheck = 0
+local lastNativeKeepAlive = 0
+
+local PLUS_CHECK_MS = 400
+local NATIVE_KEEPALIVE_MS = 500
+local HUD_CONTROLS = { 81, 82, 83, 84, 85 }
+
 local function debugPrint(...)
     if not Config.Debug then return end
     print(('[nyn_carradio:client] %s'):format(table.concat({ ... }, ' ')))
@@ -65,6 +78,25 @@ local function isPlusSessionActive()
     return active
 end
 
+local function invalidatePlusCache(active)
+    if active == nil then
+        lastPlusCheck = 0
+        return
+    end
+    cachedPlusActive = active
+    lastPlusCheck = GetGameTimer()
+end
+
+local function refreshPlusActive()
+    local now = GetGameTimer()
+    if now - lastPlusCheck < PLUS_CHECK_MS then
+        return cachedPlusActive
+    end
+    lastPlusCheck = now
+    cachedPlusActive = isPlusSessionActive()
+    return cachedPlusActive
+end
+
 local function notifyPlusBlockingQ()
     if Config.NotifyOnBlocked == false then return end
     notify('error', 'notify_plus_busy_title', 'notify_plus_busy')
@@ -82,6 +114,52 @@ local function isEmergencyVehicle(vehicle)
     return nyn_lib.client.IsEmergencyVehicle(vehicle)
 end
 
+local function refreshVehicleCache(vehicle)
+    if vehicle == cachedVehicle then
+        return cachedIsEmergency
+    end
+    cachedVehicle = vehicle
+    cachedIsEmergency = vehicle ~= 0 and isEmergencyVehicle(vehicle) or false
+    return cachedIsEmergency
+end
+
+local function getUiLocales()
+    if not uiLocales then
+        uiLocales = GetUiLocales()
+    end
+    return uiLocales
+end
+
+local function bootstrapNui(force)
+    if nuiBootstrapped and not force then return end
+    nuiBootstrapped = true
+    SendNUIMessage({
+        action = 'init',
+        stations = Config.Stations,
+        locales = getUiLocales(),
+    })
+end
+
+local function sendNui(payload)
+    if type(payload) ~= 'table' then return end
+    SendNUIMessage(payload)
+end
+
+--- Always attach stations so NUI never opens with an empty carousel (init can race).
+local function sendRadioUi(action, extra)
+    local payload = {
+        action = action,
+        stations = Config.Stations,
+        locales = getUiLocales(),
+    }
+    if type(extra) == 'table' then
+        for k, v in pairs(extra) do
+            payload[k] = v
+        end
+    end
+    sendNui(payload)
+end
+
 ---@return number
 local function getVehicle()
     return nyn_lib.client.GetCurrentVehicle()
@@ -95,24 +173,36 @@ local function killNativeRadio(vehicle)
 end
 
 ---@param vehicle number
-local function suppressDefaultRadioHud(vehicle)
-    SetUserRadioControlEnabled(false)
+local function suppressDefaultRadioHudFrame()
     HideHudComponentThisFrame(16)
-    DisableControlAction(0, 81, true) -- next radio
-    DisableControlAction(0, 82, true) -- prev radio
-    DisableControlAction(0, 83, true) -- next track
-    DisableControlAction(0, 84, true) -- prev track
-    DisableControlAction(0, 85, true) -- radio wheel
+    for i = 1, #HUD_CONTROLS do
+        DisableControlAction(0, HUD_CONTROLS[i], true)
+    end
+end
+
+local function maintainNativeStation(vehicle, isEmergency)
+    if isEmergency then return end
+    if not currentStation or currentStation.type ~= 'native' or not currentStation.value then
+        return
+    end
+
+    local now = GetGameTimer()
+    if now - lastNativeKeepAlive < NATIVE_KEEPALIVE_MS then
+        return
+    end
+    lastNativeKeepAlive = now
+
+    SetVehicleRadioEnabled(vehicle, true)
+    if GetPlayerRadioStationName() ~= currentStation.value then
+        SetVehRadioStation(vehicle, currentStation.value)
+    end
 end
 
 local function openRadioUI()
     isUIOpen = true
     isUIOpenInHoldMode = true
-    SendNUIMessage({
-        action = 'open',
-        stations = Config.Stations,
-        locales = GetUiLocales(),
-    })
+    bootstrapNui(true)
+    sendRadioUi('open')
 end
 
 local function closeRadioUI()
@@ -126,6 +216,7 @@ end
 local function applyStationLocally(vehicle, station)
     if not station then return end
     currentStation = station
+    lastNativeKeepAlive = 0
 
     if station.type == 'native' or station.type == 'stream' then
         local ext = Config.ExtensionResource or 'nyn_carradio_plus'
@@ -248,11 +339,8 @@ RegisterCommand('-nyn_carradio', function()
     else
         if vehicle and vehicle ~= 0 then
             isUIOpen = true
-            SendNUIMessage({
-                action = 'cycleNext',
-                stations = Config.Stations,
-                locales = GetUiLocales(),
-            })
+            bootstrapNui(true)
+            sendRadioUi('cycleNext')
         end
     end
 end, false)
@@ -317,15 +405,13 @@ RegisterNetEvent('nyn_carradio:client:syncRadio', function(netId, station, showU
                 isUIOpen = true
             end
 
-            SendNUIMessage({
-                action = 'syncVisuals',
+            bootstrapNui(true)
+            sendRadioUi('syncVisuals', {
                 index = station.index,
                 name = station.name,
                 image = station.image,
                 type = station.type,
                 showUI = shouldShowUI,
-                stations = Config.Stations,
-                locales = GetUiLocales(),
             })
         end
     end
@@ -349,21 +435,30 @@ RegisterNetEvent('nyn_carradio:client:initializeRadioState', function(netId)
 end)
 
 CreateThread(function()
+    Wait(250)
+    bootstrapNui()
+end)
+
+CreateThread(function()
     debugPrint('client started')
     local lastVehicle = 0
 
     while true do
-        local vehicle = getVehicle()
+        local ped = PlayerPedId()
+        local vehicle = GetVehiclePedIsIn(ped, false)
 
         if vehicle ~= 0 and lastVehicle == 0 then
+            SetUserRadioControlEnabled(false)
             killNativeRadio(vehicle)
-            if isPlusSessionActive() then
-                SendNUIMessage({ action = 'stopStream', locales = GetUiLocales() })
+            invalidatePlusCache(isPlusSessionActive())
+            bootstrapNui(true)
+            if cachedPlusActive then
+                sendNui({ action = 'stopStream' })
             else
-                SendNUIMessage({ action = 'stopAll', locales = GetUiLocales() })
+                sendNui({ action = 'stopAll' })
             end
 
-            if isEmergencyVehicle(vehicle) then
+            if refreshVehicleCache(vehicle) then
                 forceRadioOff(vehicle)
             else
                 TriggerServerEvent('nyn_carradio:server:requestRadioState', VehToNet(vehicle))
@@ -371,22 +466,26 @@ CreateThread(function()
         end
 
         if vehicle == 0 and lastVehicle ~= 0 then
+            cachedVehicle = 0
+            cachedIsEmergency = false
+            lastNativeKeepAlive = 0
             if isUIOpen then
                 isUIOpen = false
                 isUIOpenInHoldMode = false
-                SendNUIMessage({ action = 'close' })
+                sendNui({ action = 'close' })
             end
             if isExtensionOpen then
                 isExtensionOpen = false
                 SetNuiFocus(false, false)
-                SendNUIMessage({ action = 'closeExtension' })
+                sendNui({ action = 'closeExtension' })
             end
             isHolding = false
             currentStation = nil
-            if isPlusSessionActive() then
-                SendNUIMessage({ action = 'stopStream', locales = GetUiLocales() })
+            invalidatePlusCache(isPlusSessionActive())
+            if cachedPlusActive then
+                sendNui({ action = 'stopStream' })
             else
-                SendNUIMessage({ action = 'stopAll', locales = GetUiLocales() })
+                sendNui({ action = 'stopAll' })
             end
             SetUserRadioControlEnabled(true)
         end
@@ -394,30 +493,26 @@ CreateThread(function()
         lastVehicle = vehicle
 
         if vehicle ~= 0 then
-            suppressDefaultRadioHud(vehicle)
+            suppressDefaultRadioHudFrame()
 
-            if currentStation and currentStation.type == 'native' and currentStation.value then
-                if not isEmergencyVehicle(vehicle) then
-                    SetVehicleRadioEnabled(vehicle, true)
-                    if GetPlayerRadioStationName() ~= currentStation.value then
-                        SetVehRadioStation(vehicle, currentStation.value)
-                    end
-                end
-            end
+            local isEmergency = refreshVehicleCache(vehicle)
+            local plusActive = refreshPlusActive()
 
-            if isEmergencyVehicle(vehicle) then
+            maintainNativeStation(vehicle, isEmergency)
+
+            if isEmergency then
                 killNativeRadio(vehicle)
                 if isUIOpen then
                     isUIOpen = false
                     isUIOpenInHoldMode = false
-                    SendNUIMessage({ action = 'close' })
+                    sendNui({ action = 'close' })
                 end
                 isHolding = false
-            elseif not isExtensionOpen and not isPlusSessionActive() then
+            elseif not isExtensionOpen and not plusActive then
                 DisableControlAction(0, 14, true)
                 DisableControlAction(0, 15, true)
 
-                if isUIOpen then
+                if isUIOpenInHoldMode then
                     DisableControlAction(0, 174, true)
                     DisableControlAction(0, 175, true)
                     DisableControlAction(0, 24, true)
@@ -427,35 +522,28 @@ CreateThread(function()
                     DisableControlAction(0, 140, true)
                 end
 
-                local nextPressed = IsDisabledControlJustPressed(0, 14)
-                    or (isUIOpen and IsDisabledControlJustPressed(0, 175))
-                local prevPressed = IsDisabledControlJustPressed(0, 15)
-                    or (isUIOpen and IsDisabledControlJustPressed(0, 174))
+                local wheelNext = IsDisabledControlJustPressed(0, 14)
+                local wheelPrev = IsDisabledControlJustPressed(0, 15)
+                -- Quick scroll: wheel down = next. Hold-Q UI: both wheel + arrows.
+                local nextPressed = wheelNext
+                    or (isUIOpenInHoldMode and IsDisabledControlJustPressed(0, 175))
+                local prevPressed = (isUIOpenInHoldMode and (wheelPrev or IsDisabledControlJustPressed(0, 174)))
+                    or false
 
                 if nextPressed then
+                    bootstrapNui(true)
                     if isUIOpen then
-                        SendNUIMessage({ action = 'nextStation' })
+                        sendRadioUi('nextStation')
                     else
                         isUIOpen = true
-                        SendNUIMessage({
-                            action = 'cycleNext',
-                            stations = Config.Stations,
-                            locales = GetUiLocales(),
-                        })
+                        sendRadioUi('cycleNext')
                     end
                 elseif prevPressed then
-                    if isUIOpen then
-                        SendNUIMessage({ action = 'prevStation' })
-                    else
-                        isUIOpen = true
-                        SendNUIMessage({
-                            action = 'cyclePrev',
-                            stations = Config.Stations,
-                            locales = GetUiLocales(),
-                        })
-                    end
+                    bootstrapNui(true)
+                    sendRadioUi('prevStation')
                 end
             end
+
             Wait(0)
         else
             Wait(500)
@@ -530,10 +618,10 @@ local function openExtensionUI()
 
     isExtensionOpen = true
     SetNuiFocus(true, true)
+    bootstrapNui()
     SendNUIMessage({
         action = 'openExtension',
         tab = 'stations',
-        locales = GetUiLocales(),
         extension = extensionInfo(),
         state = (function()
             local ok, st = pcall(function()
@@ -592,12 +680,14 @@ RegisterNUICallback('extensionPlay', function(data, cb)
     local ok, err = exports[extensionResource()]:Play({
         url = data and data.url,
         title = data and data.title,
+        thumbnail = data and data.thumbnail,
         volume = data and data.volume,
         distance = data and data.distance,
         clientPlaying = data and data.clientPlaying,
     })
 
     if ok == true or ok == 1 then
+        invalidatePlusCache(true)
         cb({ ok = true })
     else
         local errCode = type(err) == 'string' and err or 'play_failed'
@@ -630,7 +720,46 @@ RegisterNUICallback('extensionStop', function(_, cb)
         cb({ ok = false })
         return
     end
-    cb({ ok = exports[extensionResource()]:Stop() and true or false })
+    local ok = exports[extensionResource()]:Stop() and true or false
+    if ok then invalidatePlusCache(false) end
+    cb({ ok = ok })
+end)
+
+RegisterNUICallback('extensionSkip', function(_, cb)
+    if not hasExtension() then
+        cb({ ok = false, error = 'missing_extension' })
+        return
+    end
+    local ok, err = exports[extensionResource()]:Skip()
+    cb({ ok = ok and true or false, error = type(err) == 'string' and err or nil })
+end)
+
+RegisterNUICallback('extensionQueue', function(data, cb)
+    if not hasExtension() then
+        cb({ ok = false, error = 'missing_extension' })
+        return
+    end
+
+    local vehicle = getVehicle()
+    if not vehicle or vehicle == 0 then
+        notify('error', 'notify_not_in_vehicle_title', 'notify_not_in_vehicle')
+        cb({ ok = false, error = 'not_in_vehicle' })
+        return
+    end
+
+    local ok, err = exports[extensionResource()]:Queue({
+        url = data and data.url,
+        title = data and data.title,
+        thumbnail = data and data.thumbnail,
+        volume = data and data.volume,
+    })
+
+    if ok == true or ok == 1 then
+        invalidatePlusCache(true)
+        cb({ ok = true })
+    else
+        cb({ ok = false, error = type(err) == 'string' and err or 'play_failed' })
+    end
 end)
 
 RegisterNUICallback('extensionSetVolume', function(data, cb)
@@ -640,6 +769,22 @@ RegisterNUICallback('extensionSetVolume', function(data, cb)
     end
     local ok = exports[extensionResource()]:SetVolume(data and data.volume)
     cb({ ok = ok and true or false })
+end)
+
+RegisterNUICallback('extensionResolveMeta', function(data, cb)
+    if not hasExtension() then
+        cb({ ok = false, results = {} })
+        return
+    end
+    local urls = data and data.urls
+    if type(urls) ~= 'table' then
+        cb({ ok = true, results = {} })
+        return
+    end
+    local ok, results = pcall(function()
+        return exports[extensionResource()]:ResolveMetaBatch(urls)
+    end)
+    cb({ ok = ok and true or false, results = (ok and results) or {} })
 end)
 
 RegisterNUICallback('extensionPlaylist', function(data, cb)

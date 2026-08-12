@@ -66,7 +66,7 @@
     requestAnimationFrame(() => {
       mountedVisible = true
     })
-    if (nextStations) {
+    if (nextStations && nextStations.length) {
       stations = nextStations
     }
   }
@@ -147,6 +147,10 @@
       if (data.locales) applyLocales(data.locales)
 
       switch (data.action) {
+        case 'init':
+          if (data.stations?.length) stations = data.stations
+          if (data.locales) applyLocales(data.locales)
+          break
         case 'open':
           clearAutoHide()
           mini = false
@@ -156,11 +160,13 @@
           hideUI()
           break
         case 'nextStation':
+          if (data.stations?.length) stations = data.stations
           if (stations.length) {
             selectStation((currentIndex + 1) % stations.length)
           }
           break
         case 'prevStation':
+          if (data.stations?.length) stations = data.stations
           if (stations.length) {
             selectStation((currentIndex - 1 + stations.length) % stations.length)
           }
@@ -168,7 +174,8 @@
         case 'cycleNext':
           clearAutoHide()
           mini = true
-          showUI(stations.length === 0 ? data.stations : null)
+          if (data.stations?.length) stations = data.stations
+          showUI(data.stations)
           if (stations.length > 0) {
             selectStation((currentIndex + 1) % stations.length)
           }
@@ -177,7 +184,8 @@
         case 'cyclePrev':
           clearAutoHide()
           mini = true
-          showUI(stations.length === 0 ? data.stations : null)
+          if (data.stations?.length) stations = data.stations
+          showUI(data.stations)
           if (stations.length > 0) {
             selectStation((currentIndex - 1 + stations.length) % stations.length)
           }
@@ -185,12 +193,10 @@
           break
         case 'syncVisuals':
           clearAutoHide()
-          if ((!stations || stations.length === 0) && data.stations) {
-            stations = data.stations
-          }
+          if (data.stations?.length) stations = data.stations
           if (data.showUI) {
             mini = true
-            showUI()
+            showUI(data.stations)
             resetAutoHide(3500)
           }
           syncFromPayload(data)
