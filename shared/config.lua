@@ -19,6 +19,15 @@ Config.Keybind = 'Q'
 -- Disable car radio in emergency vehicles (police, ambulance, fire – class 18)
 Config.DisableInEmergency = true
 
+--[[
+  Who can control the base Q radio (hold Q UI + mouse-wheel station cycle):
+  true  = anyone sitting in the vehicle
+  false = only driver + front passenger (rear seats hear sync, cannot control)
+
+  Independent of nyn_carradio_plus Config.AllowRearSeatControl (that one is only for Plus).
+]]
+Config.AllowRearSeatControl = true
+
 -- Notify when radio is blocked / Plus missing / not in a vehicle
 Config.NotifyOnBlocked = true
 

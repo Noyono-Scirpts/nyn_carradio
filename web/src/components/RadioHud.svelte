@@ -244,7 +244,6 @@
     <div class="radio-card" class:mini>
       <div class="radio-header">
         <div class="status-indicator">
-          <span class="pulse-dot"></span>
           <span class="status-text">{statusLabel}</span>
         </div>
 

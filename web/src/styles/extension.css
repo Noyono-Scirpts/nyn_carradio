@@ -33,9 +33,39 @@
   pointer-events: auto;
 }
 
+.ext-shell-wrap {
+  --ext-ox: 0px;
+  --ext-oy: 0px;
+  transform: translate3d(var(--ext-ox), var(--ext-oy), 0);
+  transition: transform 0.28s var(--ext-ease);
+  will-change: transform;
+  touch-action: none;
+}
+
+.ext-shell-wrap.dragging {
+  transition: none;
+}
+
+.ext-shell-wrap.movable .ext-header-movable {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.ext-shell-wrap.dragging .ext-header-movable {
+  cursor: grabbing;
+}
+
+.ext-shell-wrap.movable .ext-tab {
+  cursor: grab;
+}
+
 .ext-shell {
-  width: min(750px, 92vw);
-  height: min(500px, 78vh);
+  --ext-scale: 1;
+  /* Cap layout box so zoom never exceeds the viewport on small monitors */
+  width: min(750px, calc(92vw / var(--ext-scale)));
+  height: min(500px, calc(78vh / var(--ext-scale)));
+  zoom: var(--ext-scale);
   background:
     linear-gradient(155deg, rgba(100, 176, 216, 0.08), transparent 42%),
     linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 100%);
@@ -55,6 +85,37 @@
 .ext-root.visible .ext-shell {
   opacity: 1;
   transform: translateY(0) scale(1);
+}
+
+/* Shared custom scrollbar (stations, playlists, queue, …) */
+.ext-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 176, 216, 0.55) rgba(255, 255, 255, 0.04);
+}
+
+.ext-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.ext-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  margin: 2px 0;
+}
+
+.ext-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(126, 192, 224, 0.75),
+    rgba(100, 176, 216, 0.45)
+  );
+  border-radius: 999px;
+  border: 1px solid rgba(100, 176, 216, 0.25);
+}
+
+.ext-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 176, 216, 0.85);
 }
 
 /* ── Header ── */
@@ -182,6 +243,37 @@
   animation: ext-pulse 2s ease-in-out infinite;
 }
 
+.ext-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.ext-icon-btn:hover {
+  background: rgba(100, 176, 216, 0.12);
+  border-color: rgba(100, 176, 216, 0.45);
+  color: var(--ext-accent);
+}
+
+.ext-icon-btn.active {
+  background: rgba(100, 176, 216, 0.16);
+  border-color: rgba(100, 176, 216, 0.55);
+  color: var(--ext-accent);
+}
+
 .ext-close {
   width: 36px;
   height: 36px;
@@ -205,6 +297,93 @@
   background: var(--red-dim);
   border-color: rgba(199, 51, 51, 0.55);
   color: var(--red);
+}
+
+.ext-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ext-hairline);
+  background: rgba(0, 0, 0, 0.18);
+  flex-shrink: 0;
+}
+
+.ext-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ext-settings-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ext-settings-label strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ext-text);
+}
+
+.ext-settings-label span {
+  font-size: 11px;
+  color: var(--ext-text-muted);
+}
+
+.ext-settings-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ext-accent);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.ext-settings-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ext-settings-controls input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--ext-accent);
+}
+
+.ext-settings-reset {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ext-text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.ext-settings-reset:hover:not(:disabled) {
+  background: rgba(100, 176, 216, 0.12);
+  border-color: rgba(100, 176, 216, 0.45);
+  color: var(--ext-accent);
+}
+
+.ext-settings-reset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* ── Body / panes ── */
@@ -493,32 +672,6 @@
   overflow-y: auto;
   min-height: 0;
   padding-right: 6px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(100, 176, 216, 0.55) rgba(255, 255, 255, 0.04);
-}
-
-.ext-queue-list::-webkit-scrollbar {
-  width: 5px;
-}
-
-.ext-queue-list::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 999px;
-  margin: 2px 0;
-}
-
-.ext-queue-list::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    180deg,
-    rgba(126, 192, 224, 0.75),
-    rgba(100, 176, 216, 0.45)
-  );
-  border-radius: 999px;
-  border: 1px solid rgba(100, 176, 216, 0.25);
-}
-
-.ext-queue-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 176, 216, 0.85);
 }
 
 .ext-queue-item {
@@ -754,6 +907,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  max-height: 140px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .ext-pl-picker-item {

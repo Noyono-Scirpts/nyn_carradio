@@ -87,6 +87,15 @@ local function invalidatePlusCache(active)
     lastPlusCheck = GetGameTimer()
 end
 
+local function markPlusSessionEnded()
+    cachedPlusActive = false
+    lastPlusCheck = GetGameTimer()
+end
+
+RegisterNetEvent('nyn_carradio:client:plusSessionEnded', markPlusSessionEnded)
+AddEventHandler('nyn_carradio:client:plusSessionEnded', markPlusSessionEnded)
+exports('PlusSessionEnded', markPlusSessionEnded)
+
 local function refreshPlusActive()
     local now = GetGameTimer()
     if now - lastPlusCheck < PLUS_CHECK_MS then
@@ -163,6 +172,78 @@ end
 ---@return number
 local function getVehicle()
     return nyn_lib.client.GetCurrentVehicle()
+end
+
+--- Seat index for ped in vehicle, or nil
+---@param vehicle number
+---@param ped number|nil
+---@return number|nil
+local function getPedSeat(vehicle, ped)
+    ped = ped or PlayerPedId()
+    if not vehicle or vehicle == 0 or not ped or ped == 0 then return nil end
+    local maxPassengers = GetVehicleMaxNumberOfPassengers(vehicle)
+    for seat = -1, maxPassengers - 1 do
+        if GetPedInVehicleSeat(vehicle, seat) == ped then
+            return seat
+        end
+    end
+    return nil
+end
+
+--- Driver (-1) + front passenger (0), unless Config.AllowRearSeatControl (base Q radio only).
+---@param vehicle number|nil
+---@param notifyBlocked boolean|nil
+---@return boolean
+local function canControlRadio(vehicle, notifyBlocked)
+    vehicle = vehicle or getVehicle()
+    if not vehicle or vehicle == 0 then
+        return false
+    end
+    if Config.AllowRearSeatControl then
+        return true
+    end
+    local seat = getPedSeat(vehicle)
+    if seat == -1 or seat == 0 then
+        return true
+    end
+    if notifyBlocked and Config.NotifyOnBlocked ~= false then
+        notify('error', 'notify_seat_title', 'notify_seat')
+    end
+    return false
+end
+
+exports('CanControlRadio', function(vehicle)
+    return canControlRadio(vehicle, false)
+end)
+
+--- Plus seat rules from nyn_carradio_plus Config.AllowRearSeatControl (not base Q).
+---@param vehicle number|nil
+---@param notifyBlocked boolean|nil
+---@return boolean
+local function canControlPlus(vehicle, notifyBlocked)
+    vehicle = vehicle or getVehicle()
+    if not vehicle or vehicle == 0 then
+        return false
+    end
+
+    local res = Config.ExtensionResource or 'nyn_carradio_plus'
+    if GetResourceState(res) == 'started' then
+        local ok, allowed = pcall(function()
+            return exports[res]:CanControlRadio(vehicle)
+        end)
+        if ok then
+            if allowed then
+                return true
+            end
+            if notifyBlocked and Config.NotifyOnBlocked ~= false then
+                notify('error', 'notify_seat_title', 'notify_seat')
+            end
+            return false
+        end
+    end
+
+    -- Plus missing / old export: keep front seats only
+    return canControlRadio(vehicle, notifyBlocked)
 end
 
 ---@param vehicle number
@@ -283,6 +364,10 @@ RegisterCommand('+nyn_carradio', function()
         return
     end
 
+    if not canControlRadio(vehicle, true) then
+        return
+    end
+
     if isPlusSessionActive() then
         notifyPlusBlockingQ()
         return
@@ -297,6 +382,10 @@ RegisterCommand('+nyn_carradio', function()
             if not uiOpened and (GetGameTimer() - pressTime) >= 600 then
                 local currentVehicle = getVehicle()
                 if currentVehicle and currentVehicle ~= 0 then
+                    if not canControlRadio(currentVehicle, true) then
+                        isHolding = false
+                        break
+                    end
                     if isPlusSessionActive() then
                         notifyPlusBlockingQ()
                         isHolding = false
@@ -320,6 +409,13 @@ RegisterCommand('-nyn_carradio', function()
 
     local vehicle = getVehicle()
     if isEmergencyVehicle(vehicle) then
+        if isUIOpenInHoldMode then
+            closeRadioUI()
+        end
+        return
+    end
+
+    if not canControlRadio(vehicle, true) then
         if isUIOpenInHoldMode then
             closeRadioUI()
         end
@@ -361,6 +457,11 @@ RegisterNUICallback('selectStation', function(data, cb)
         if isEmergencyVehicle(vehicle) then
             forceRadioOff(vehicle)
             cb({ ok = true })
+            return
+        end
+
+        if not canControlRadio(vehicle, true) then
+            cb({ ok = false, error = 'seat' })
             return
         end
 
@@ -508,7 +609,7 @@ CreateThread(function()
                     sendNui({ action = 'close' })
                 end
                 isHolding = false
-            elseif not isExtensionOpen and not plusActive then
+            elseif not isExtensionOpen and not plusActive and canControlRadio(vehicle, false) then
                 DisableControlAction(0, 14, true)
                 DisableControlAction(0, 15, true)
 
@@ -609,6 +710,10 @@ local function openExtensionUI()
         return false
     end
 
+    if not canControlPlus(vehicle, true) then
+        return false
+    end
+
     if not hasExtension() then
         if Config.NotifyOnBlocked ~= false then
             notify('error', 'notify_plus_missing_title', 'notify_plus_missing')
@@ -621,7 +726,7 @@ local function openExtensionUI()
     bootstrapNui()
     SendNUIMessage({
         action = 'openExtension',
-        tab = 'stations',
+        tab = 'now',
         extension = extensionInfo(),
         state = (function()
             local ok, st = pcall(function()
@@ -677,6 +782,11 @@ RegisterNUICallback('extensionPlay', function(data, cb)
         return
     end
 
+    if not canControlPlus(vehicle, true) then
+        cb({ ok = false, error = 'seat' })
+        return
+    end
+
     local ok, err = exports[extensionResource()]:Play({
         url = data and data.url,
         title = data and data.title,
@@ -704,12 +814,20 @@ RegisterNUICallback('extensionPause', function(_, cb)
         cb({ ok = false })
         return
     end
+    if not canControlPlus(nil, true) then
+        cb({ ok = false, error = 'seat' })
+        return
+    end
     cb({ ok = exports[extensionResource()]:Pause() and true or false })
 end)
 
 RegisterNUICallback('extensionResume', function(_, cb)
     if not hasExtension() then
         cb({ ok = false })
+        return
+    end
+    if not canControlPlus(nil, true) then
+        cb({ ok = false, error = 'seat' })
         return
     end
     cb({ ok = exports[extensionResource()]:Resume() and true or false })
@@ -720,14 +838,24 @@ RegisterNUICallback('extensionStop', function(_, cb)
         cb({ ok = false })
         return
     end
-    local ok = exports[extensionResource()]:Stop() and true or false
-    if ok then invalidatePlusCache(false) end
-    cb({ ok = ok })
+    if not canControlPlus(nil, true) then
+        cb({ ok = false, error = 'seat' })
+        return
+    end
+    pcall(function()
+        exports[extensionResource()]:Stop()
+    end)
+    markPlusSessionEnded()
+    cb({ ok = true })
 end)
 
 RegisterNUICallback('extensionSkip', function(_, cb)
     if not hasExtension() then
         cb({ ok = false, error = 'missing_extension' })
+        return
+    end
+    if not canControlPlus(nil, true) then
+        cb({ ok = false, error = 'seat' })
         return
     end
     local ok, err = exports[extensionResource()]:Skip()
@@ -744,6 +872,11 @@ RegisterNUICallback('extensionQueue', function(data, cb)
     if not vehicle or vehicle == 0 then
         notify('error', 'notify_not_in_vehicle_title', 'notify_not_in_vehicle')
         cb({ ok = false, error = 'not_in_vehicle' })
+        return
+    end
+
+    if not canControlPlus(vehicle, true) then
+        cb({ ok = false, error = 'seat' })
         return
     end
 
@@ -765,6 +898,10 @@ end)
 RegisterNUICallback('extensionSetVolume', function(data, cb)
     if not hasExtension() then
         cb({ ok = false, error = 'missing_extension' })
+        return
+    end
+    if not canControlPlus(nil, true) then
+        cb({ ok = false, error = 'seat' })
         return
     end
     local ok = exports[extensionResource()]:SetVolume(data and data.volume)
@@ -818,6 +955,11 @@ RegisterNUICallback('extensionPlayPlaylist', function(data, cb)
     if not vehicle or vehicle == 0 then
         notify('error', 'notify_not_in_vehicle_title', 'notify_not_in_vehicle')
         cb({ ok = false, error = 'not_in_vehicle' })
+        return
+    end
+
+    if not canControlPlus(vehicle, true) then
+        cb({ ok = false, error = 'seat' })
         return
     end
 

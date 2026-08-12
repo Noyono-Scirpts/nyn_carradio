@@ -68,15 +68,6 @@
   letter-spacing: 2px;
 }
 
-.pulse-dot {
-  width: 6px;
-  height: 6px;
-  background-color: var(--green);
-  border-radius: 50%;
-  box-shadow: 0 0 8px rgba(68, 199, 51, 0.45);
-  animation: pulse 1.8s infinite alternate;
-}
-
 .station-info-row {
   display: flex;
   align-items: center;
@@ -279,18 +270,6 @@
   animation-delay: 0.2s;
   animation-duration: 0.45s;
   background: var(--blue);
-}
-
-@keyframes pulse {
-  from {
-    transform: scale(0.9);
-    opacity: 0.6;
-  }
-  to {
-    transform: scale(1.1);
-    opacity: 1;
-    box-shadow: 0 0 12px rgba(68, 199, 51, 0.55);
-  }
 }
 
 @keyframes bounce {

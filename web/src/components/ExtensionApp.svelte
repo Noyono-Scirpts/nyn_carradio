@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { X, Play, LoaderCircle, ListPlus, SkipForward } from '@lucide/svelte'
+  import { X, Play, LoaderCircle, ListPlus, SkipForward, Settings, RotateCcw } from '@lucide/svelte'
   import { nuiCallback, onNuiMessage } from '../lib/nui.js'
   import {
     stopPlusMedia,
@@ -16,10 +16,208 @@
 
   let visible = $state(false)
   let mountedVisible = $state(false)
-  let tab = $state('stations')
+  let tab = $state('now')
   let urlInput = $state('')
   let busy = $state(false)
   let statusMsg = $state('')
+  let showSettings = $state(false)
+
+  const UI_SCALE_KEY = 'nyn_carradio_plus_ui_scale'
+  const UI_POS_KEY = 'nyn_carradio_plus_ui_pos'
+  const UI_SCALE_DEFAULT = 1
+  const UI_SCALE_MIN = 0.8
+  const UI_SCALE_MAX = 1.35
+
+  // sessionStorage = survives open/close of Plus in one game session,
+  // but clears on NUI reload (resource restart / reconnect / game restart).
+  // localStorage was too sticky (Chromium profile) and survived "clear cache".
+  function uiStore() {
+    try {
+      return sessionStorage
+    } catch (_) {
+      return null
+    }
+  }
+
+  function purgeLegacyLocalUiPrefs() {
+    try {
+      localStorage.removeItem(UI_SCALE_KEY)
+      localStorage.removeItem(UI_POS_KEY)
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  purgeLegacyLocalUiPrefs()
+
+  function loadUiScale() {
+    try {
+      const store = uiStore()
+      const raw = store?.getItem(UI_SCALE_KEY)
+      const v = raw == null ? NaN : parseFloat(raw)
+      if (Number.isFinite(v) && v >= UI_SCALE_MIN && v <= UI_SCALE_MAX) return v
+    } catch (_) {
+      /* ignore */
+    }
+    return UI_SCALE_DEFAULT
+  }
+
+  function loadUiOffset() {
+    try {
+      const store = uiStore()
+      const raw = store?.getItem(UI_POS_KEY)
+      if (!raw) return { x: 0, y: 0 }
+      const p = JSON.parse(raw)
+      if (Number.isFinite(p?.x) && Number.isFinite(p?.y)) return { x: p.x, y: p.y }
+    } catch (_) {
+      /* ignore */
+    }
+    return { x: 0, y: 0 }
+  }
+
+  let uiScale = $state(loadUiScale())
+  let uiOffset = $state(loadUiOffset())
+  let dragging = $state(false)
+  let dragOrigin = null
+
+  function clampUiScale(v) {
+    return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Number(v) || UI_SCALE_DEFAULT))
+  }
+
+  function clampUiOffset(x, y) {
+    const vw = typeof window !== 'undefined' ? window.innerWidth || 1920 : 1920
+    const vh = typeof window !== 'undefined' ? window.innerHeight || 1080 : 1080
+    // Keep a large move range; only stop before the panel fully leaves the screen.
+    const limitX = Math.max(120, vw * 0.45)
+    const limitY = Math.max(80, vh * 0.45)
+    return {
+      x: Math.max(-limitX, Math.min(limitX, Number(x) || 0)),
+      y: Math.max(-limitY, Math.min(limitY, Number(y) || 0)),
+    }
+  }
+
+  function saveUiScale(v) {
+    uiScale = clampUiScale(v)
+    uiOffset = clampUiOffset(uiOffset.x, uiOffset.y)
+    try {
+      uiStore()?.setItem(UI_SCALE_KEY, String(uiScale))
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function persistUiOffset() {
+    try {
+      uiStore()?.setItem(UI_POS_KEY, JSON.stringify(uiOffset))
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function saveUiOffset(x, y) {
+    uiOffset = clampUiOffset(x, y)
+    persistUiOffset()
+  }
+
+  function resetUiScale() {
+    uiScale = UI_SCALE_DEFAULT
+    try {
+      uiStore()?.removeItem(UI_SCALE_KEY)
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function resetUiOffset() {
+    uiOffset = { x: 0, y: 0 }
+    try {
+      uiStore()?.removeItem(UI_POS_KEY)
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function resetUiLayout() {
+    resetUiScale()
+    resetUiOffset()
+  }
+
+  function onUiScaleInput(e) {
+    saveUiScale(e.currentTarget.value)
+  }
+
+  let dragMoved = false
+  let suppressHeaderClick = false
+  let dragWindowCleanup = null
+
+  function stopWindowDragListeners() {
+    if (typeof dragWindowCleanup === 'function') {
+      dragWindowCleanup()
+      dragWindowCleanup = null
+    }
+  }
+
+  function isDragIgnoreTarget(target) {
+    // Only block real chrome controls — tabs/brand must remain draggable in move mode.
+    return !!target?.closest?.('.ext-icon-btn, .ext-close, .ext-settings')
+  }
+
+  function onShellPointerDown(e) {
+    if (!showSettings || e.button !== 0) return
+    if (isDragIgnoreTarget(e.target)) return
+
+    e.preventDefault()
+    dragging = true
+    dragMoved = false
+    dragOrigin = {
+      mx: e.clientX,
+      my: e.clientY,
+      ox: uiOffset.x,
+      oy: uiOffset.y,
+    }
+
+    const onMove = (ev) => {
+      if (!dragOrigin) return
+      const dx = ev.clientX - dragOrigin.mx
+      const dy = ev.clientY - dragOrigin.my
+      if (!dragMoved && dx * dx + dy * dy < 16) return
+      dragMoved = true
+      uiOffset = clampUiOffset(dragOrigin.ox + dx, dragOrigin.oy + dy)
+    }
+
+    const onUp = () => {
+      stopWindowDragListeners()
+      if (dragMoved) {
+        persistUiOffset()
+        suppressHeaderClick = true
+        setTimeout(() => {
+          suppressHeaderClick = false
+        }, 0)
+      }
+      dragging = false
+      dragOrigin = null
+      dragMoved = false
+    }
+
+    stopWindowDragListeners()
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    dragWindowCleanup = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }
+
+  function onTabClick(id) {
+    if (suppressHeaderClick) return
+    selectTab(id)
+  }
+
+  const uiScalePct = $derived(Math.round(uiScale * 100))
+  const hasUiOffset = $derived(uiOffset.x !== 0 || uiOffset.y !== 0)
+
   let extension = $state({
     available: false,
     xsound: false,
@@ -92,6 +290,13 @@
     plus_url_ph: 'YouTube / https://…/stream.mp3',
     plus_need_url: 'Enter a YouTube or live stream URL.',
     plus_playing: 'Playing…',
+    plus_settings: 'Settings',
+    plus_ui_size: 'Radio size',
+    plus_ui_size_hint: 'Scales the whole Plus window. Kept for this session only.',
+    plus_ui_move: 'Move radio',
+    plus_ui_move_hint: 'With settings open, drag anywhere on the top bar.',
+    plus_ui_reset: 'Reset',
+    plus_ui_reset_pos: 'Center',
     plus_err_limit_playlists: 'Playlist limit reached.',
     plus_err_limit_tracks: 'Track limit reached for this playlist.',
     plus_err_invalid_url: 'YouTube links only.',
@@ -102,6 +307,7 @@
     plus_err_timeout: 'Timed out — try again.',
     plus_err_not_in_vehicle: 'You must be in a vehicle.',
     plus_err_missing_extension: 'nyn_carradio_plus is missing.',
+    plus_err_seat: 'Only driver and front passenger can control the radio.',
     plus_err_load_failed: 'Failed to load playlist.',
     plus_err_play_failed: 'Could not play playlist.',
     plus_err_failed: 'Operation failed.',
@@ -117,9 +323,9 @@
 
   const playlistsEnabled = $derived(!!extension.features?.playlists)
   const tabs = $derived.by(() => {
-    const list = [{ id: 'stations', label: locales.plus_tab_stations }]
+    const list = [{ id: 'now', label: locales.plus_tab_now }]
     if (playlistsEnabled) list.push({ id: 'playlists', label: locales.plus_tab_playlists })
-    list.push({ id: 'now', label: locales.plus_tab_now })
+    list.push({ id: 'stations', label: locales.plus_tab_stations })
     return list
   })
 
@@ -282,6 +488,7 @@
       timeout: locales.plus_err_timeout,
       not_in_vehicle: locales.plus_err_not_in_vehicle,
       missing_extension: locales.plus_err_missing_extension,
+      seat: locales.plus_err_seat,
       load_failed: locales.plus_err_load_failed,
       play_failed: locales.plus_err_play_failed,
     }
@@ -313,6 +520,7 @@
   async function selectTab(id) {
     tab = id
     showPlaylistPicker = false
+    showSettings = false
     if ((id === 'playlists' || id === 'now') && playlistsEnabled) {
       await refreshPlaylists()
     }
@@ -352,7 +560,8 @@
       }
       enrichPlaybackMeta(playback)
     }
-    tab = payload.tab || (stations.length ? 'stations' : 'now')
+    tab = payload.tab || 'now'
+    showSettings = false
     visible = true
     requestAnimationFrame(() => {
       mountedVisible = true
@@ -363,6 +572,7 @@
   }
 
   function close() {
+    showSettings = false
     mountedVisible = false
     setTimeout(() => {
       visible = false
@@ -408,12 +618,12 @@
       activeStationUrl = url
       urlInput = url
       tab = 'now'
-      statusMsg = locales.plus_playing
     } else {
       stopPlusMedia()
       const map = {
         missing_extension: locales.plus_err_missing_extension,
         not_in_vehicle: locales.plus_err_not_in_vehicle,
+        seat: locales.plus_err_seat,
         invalid_url: locales.plus_err_invalid_url,
         no_xsound: locales.plus_err_no_xsound,
         play_failed: locales.plus_err_play_failed,
@@ -732,7 +942,6 @@
         urlInput = url
       }
       tab = 'now'
-      statusMsg = locales.plus_playing
     } else {
       stopPlusMedia()
       statusMsg = playlistError(res?.error)
@@ -823,14 +1032,32 @@
       off()
       window.removeEventListener('keyup', onKey)
       clearTimeout(volumeTimer)
+      stopWindowDragListeners()
     }
   })
 </script>
 
 {#if visible}
   <div class="ext-root" class:visible={mountedVisible}>
-    <div class="ext-shell" aria-label={tabTitle}>
-      <header class="ext-header">
+    <div
+      class="ext-shell-wrap"
+      class:dragging
+      class:movable={showSettings}
+      style={`--ext-ox: ${uiOffset.x}px; --ext-oy: ${uiOffset.y}px`}
+    >
+      <div
+        class="ext-shell"
+        aria-label={tabTitle}
+        style={`--ext-scale: ${uiScale}`}
+      >
+      <header
+        class="ext-header"
+        class:ext-header-movable={showSettings}
+        role="toolbar"
+        tabindex="-1"
+        aria-label={showSettings ? locales.plus_ui_move : tabTitle}
+        onpointerdown={onShellPointerDown}
+      >
         <div class="ext-brand">
           <span class="ext-brand-label">
             <span class="ext-brand-nyn">NYN</span>
@@ -845,7 +1072,7 @@
               type="button"
               class="ext-tab"
               class:active={tab === item.id}
-              onclick={() => selectTab(item.id)}
+              onclick={() => onTabClick(item.id)}
             >
               {item.label}
             </button>
@@ -857,11 +1084,72 @@
             <span class="ext-dot" class:on={isLive}></span>
             <span class="ext-live-label">{playingLabel}</span>
           </div>
+          <button
+            type="button"
+            class="ext-icon-btn"
+            class:active={showSettings}
+            onclick={() => {
+              showSettings = !showSettings
+              if (!showSettings) {
+                dragging = false
+                dragOrigin = null
+                dragMoved = false
+                stopWindowDragListeners()
+              }
+            }}
+            aria-label={locales.plus_settings}
+            title={locales.plus_settings}
+          >
+            <Settings size={17} strokeWidth={2.2} />
+          </button>
           <button type="button" class="ext-close" onclick={close} aria-label="Close">
             <X size={18} strokeWidth={2.2} />
           </button>
         </div>
       </header>
+
+      {#if showSettings}
+        <div class="ext-settings" aria-label={locales.plus_settings}>
+          <div class="ext-settings-row">
+            <div class="ext-settings-label">
+              <strong>{locales.plus_ui_size}</strong>
+              <span>{locales.plus_ui_size_hint}</span>
+            </div>
+            <span class="ext-settings-value">{uiScalePct}%</span>
+          </div>
+          <div class="ext-settings-controls">
+            <input
+              type="range"
+              min={UI_SCALE_MIN}
+              max={UI_SCALE_MAX}
+              step="0.05"
+              value={uiScale}
+              oninput={onUiScaleInput}
+              aria-label={locales.plus_ui_size}
+            />
+            <button type="button" class="ext-settings-reset" onclick={resetUiLayout}>
+              <RotateCcw size={14} strokeWidth={2.4} />
+              {locales.plus_ui_reset}
+            </button>
+          </div>
+
+          <div class="ext-settings-row">
+            <div class="ext-settings-label">
+              <strong>{locales.plus_ui_move}</strong>
+              <span>{locales.plus_ui_move_hint}</span>
+            </div>
+            <button
+              type="button"
+              class="ext-settings-reset"
+              onclick={resetUiOffset}
+              disabled={!hasUiOffset}
+            >
+              <RotateCcw size={14} strokeWidth={2.4} />
+              {locales.plus_ui_reset_pos}
+            </button>
+          </div>
+        </div>
+      {/if}
 
       <div class="ext-body">
         {#key tab}
@@ -878,7 +1166,7 @@
                   <p>{locales.plus_no_stations_body}</p>
                 </div>
               {:else}
-                <div class="ext-station-list">
+                <div class="ext-station-list ext-scroll">
                   {#each stations as station (station.url)}
                     <button
                       type="button"
@@ -987,7 +1275,7 @@
                     </div>
                   </div>
 
-                  <div class="ext-pl-tracks">
+                  <div class="ext-pl-tracks ext-scroll">
                     {#each selectedTracks as track (track.id)}
                       <div class="ext-pl-track">
                         {#if trackArt(track.url)}
@@ -1048,7 +1336,7 @@
                   </div>
                   <div class="ext-pl-hint">{fmt(locales.plus_playlists_count, playlists.length, maxPlaylists)}</div>
 
-                  <div class="ext-pl-list">
+                  <div class="ext-pl-list ext-scroll">
                     {#each playlists as pl (pl.id)}
                       <div class="ext-pl-row">
                         <div class="ext-pl-row-meta">
@@ -1191,7 +1479,7 @@
                       <span class="ext-queue-title">{playback?.playlist?.name || locales.plus_queue}</span>
                       <span class="ext-queue-count">{fmt(locales.plus_queue_hint, queueIndex, queueTotal)}</span>
                     </div>
-                    <div class="ext-queue-list" role="list">
+                    <div class="ext-queue-list ext-scroll" role="list">
                       {#each queueTracks as track, i (track.url + '-' + i)}
                         {@const pos = i + 1}
                         {@const isCurrent = pos === queueIndex}
@@ -1234,7 +1522,7 @@
                     {#if showPlaylistPicker && playlists.length > 0}
                       <div class="ext-pl-picker" role="listbox" aria-label={locales.plus_pick_playlist}>
                         <span class="ext-pl-picker-label">{locales.plus_pick_playlist}</span>
-                        <div class="ext-pl-picker-list">
+                        <div class="ext-pl-picker-list ext-scroll">
                           {#each playlists as pl (pl.id)}
                             <button
                               type="button"
@@ -1295,6 +1583,7 @@
             {/if}
           </div>
         {/key}
+      </div>
       </div>
     </div>
   </div>
