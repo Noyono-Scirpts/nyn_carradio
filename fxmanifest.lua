@@ -3,7 +3,7 @@ game 'gta5'
 
 author 'Noyono'
 description 'NYN Car Radio - vehicle radio selector with multiplayer sync'
-version '1.1.0'
+version '1.0.0'
 
 ui_page 'ui/index.html'
 
