@@ -51,7 +51,6 @@ Config.Locale = 'en'
 Config.Debug = false
 Config.Keybind = 'Q'
 Config.EnableExtension = true
-Config.ExtensionResource = 'nyn_carradio_plus'
 Config.DisableInEmergency = true
 Config.NotifyOnBlocked = true
 Config.Notify = 'nyn_lib' -- 'nyn_lib' | 'ox_lib'

@@ -9,7 +9,6 @@ Config.ShowNynPrefix = true
 
 -- Enable Car Radio+ UI bridge (command/keybind live in nyn_carradio_plus)
 Config.EnableExtension = true
-Config.ExtensionResource = 'nyn_carradio_plus'
 
 -- Remappable in FiveM Settings → Key Bindings → FiveM
 Config.Keybind = 'Q'

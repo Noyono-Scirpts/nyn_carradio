@@ -20,6 +20,7 @@ local lastNativeKeepAlive = 0
 local PLUS_CHECK_MS = 400
 local NATIVE_KEEPALIVE_MS = 500
 local HUD_CONTROLS = { 81, 82, 83, 84, 85 }
+local EXTENSION_RESOURCE = 'nyn_carradio_plus'
 
 local function debugPrint(...)
     if not Config.Debug then return end
@@ -68,7 +69,7 @@ RegisterNetEvent('nyn_carradio:client:notify', function(nType, title, message, d
 end)
 
 local function isPlusSessionActive()
-    local ext = Config.ExtensionResource or 'nyn_carradio_plus'
+    local ext = EXTENSION_RESOURCE
     if GetResourceState(ext) ~= 'started' then return false end
     local active = false
     pcall(function()
@@ -225,7 +226,7 @@ local function canControlPlus(vehicle, notifyBlocked)
         return false
     end
 
-    local res = Config.ExtensionResource or 'nyn_carradio_plus'
+    local res = EXTENSION_RESOURCE
     if GetResourceState(res) == 'started' then
         local ok, allowed = pcall(function()
             return exports[res]:CanControlRadio(vehicle)
@@ -299,7 +300,7 @@ local function applyStationLocally(vehicle, station)
     lastNativeKeepAlive = 0
 
     if station.type == 'native' or station.type == 'stream' then
-        local ext = Config.ExtensionResource or 'nyn_carradio_plus'
+        local ext = EXTENSION_RESOURCE
         if GetResourceState(ext) == 'started' then
             local playing = false
             pcall(function()
@@ -664,7 +665,7 @@ exports('ForwardNui', forwardNuiMessage)
 
 
 local function extensionResource()
-    return Config.ExtensionResource or 'nyn_carradio_plus'
+    return EXTENSION_RESOURCE
 end
 
 local function hasExtension()
