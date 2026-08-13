@@ -15,10 +15,8 @@
       if (!data || !data.action) return
 
       if (data.action === 'plusPlay') {
-        console.log('[nyn_carradio] NUI received plusPlay', data)
         const volume = typeof data.volume === 'number' ? data.volume : 0.8
         if (data.kind === 'youtube') {
-          // YouTube audio is xsound-only — never show an embed
           stopPlusMedia()
         } else if (data.kind === 'stream' && data.url) {
           playPlusStream(data.url, volume)
@@ -32,7 +30,6 @@
       } else if (data.action === 'stopAll') {
         stopPlusMedia()
       }
-      // stopStream = jen base Spin HTML — nesmí zabít plus YouTube
 
     })
   })

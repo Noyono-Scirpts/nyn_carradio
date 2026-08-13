@@ -1,9 +1,3 @@
-/**
- * YouTube metadata helpers.
- * Thumbnail needs no network (ytimg).
- * Title: try noembed/oEmbed in NUI, then server (FiveM NUI often blocks YouTube).
- */
-
 import { nuiCallback } from './nui.js'
 
 const GENERIC_TITLES = new Set(['youtube', 'live radio', 'playlist', ''])
@@ -98,9 +92,6 @@ async function fetchViaServer(url) {
   return null
 }
 
-/**
- * @returns {Promise<{ title: string, thumbnail: string, videoId: string } | null>}
- */
 export async function fetchYoutubeMeta(url) {
   const videoId = extractYoutubeId(url)
   if (!videoId) return null
@@ -129,9 +120,6 @@ export async function fetchYoutubeMeta(url) {
   return result
 }
 
-/**
- * Resolve many URLs (playlist / queue). Returns Map-like object keyed by url + videoId.
- */
 export async function fetchYoutubeMetaBatch(urls) {
   const list = Array.from(new Set((urls || []).filter((u) => typeof u === 'string' && u)))
   const out = {}

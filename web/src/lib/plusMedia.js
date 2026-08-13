@@ -1,9 +1,3 @@
-/**
- * Plus media in carradio NUI.
- * Streams prefer Web Audio (optional low-pass muffle). Falls back to plain Audio on CORS fail.
- * YouTube stays xsound-only from Lua.
- */
-
 let ytApiReady = null
 let ytPlayer = null
 let htmlAudio = null
@@ -11,7 +5,6 @@ let currentKind = null
 let pendingVolume = 0.8
 let muffled = false
 
-/** Web Audio graph for stream LPF */
 let audioCtx = null
 let mediaSource = null
 let filterNode = null
@@ -149,7 +142,6 @@ function applyMuffleToGraph() {
   }
 }
 
-/** Outside cabin = low-pass + quieter (NUI stream only) */
 export function setPlusMuffle(enabled) {
   muffled = !!enabled
   if (usingWebAudio) {
@@ -300,7 +292,6 @@ export async function playPlusYoutube(videoId, volume = 0.8) {
               } catch (_) {
                 /* ignore */
               }
-              console.log('[nyn_carradio] YT playing (hidden)', videoId)
               finish(true)
             }
           },
@@ -335,14 +326,9 @@ function playPlainStream(url) {
     console.error('[nyn_carradio] Plus stream error:', err)
   })
   usingWebAudio = false
-  console.log('[nyn_carradio] stream plain Audio (no LPF)')
   return true
 }
 
-/**
- * Live stream with optional low-pass. Web Audio needs CORS on the stream URL —
- * if that fails we fall back to plain <audio> (volume muffle only).
- */
 export function playPlusStream(url, volume = 0.8) {
   if (!url) return false
   stopPlusMedia()
@@ -370,9 +356,7 @@ export function playPlusStream(url, volume = 0.8) {
     filterNode.connect(gainNode)
     gainNode.connect(audioCtx.destination)
     usingWebAudio = true
-    console.log('[nyn_carradio] stream Web Audio + LPF ready')
   } catch (err) {
-    console.warn('[nyn_carradio] Web Audio graph failed, plain Audio:', err)
     teardownWebAudio()
     htmlAudio = null
     return playPlainStream(url)
@@ -383,8 +367,6 @@ export function playPlusStream(url, volume = 0.8) {
   if (playPromise && typeof playPromise.catch === 'function') {
     playPromise.catch((err) => {
       if (err?.name === 'AbortError') return
-      // CORS / autoplay — rebuild as plain element
-      console.warn('[nyn_carradio] Web Audio play failed, plain fallback:', err?.message || err)
       const resumeUrl = url
       const vol = pendingVolume
       stopHtmlAudio()

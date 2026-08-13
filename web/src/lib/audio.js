@@ -1,5 +1,3 @@
-/** Stream audio player (HTML Audio) — base stations only */
-
 let currentAudio = null
 let playGeneration = 0
 

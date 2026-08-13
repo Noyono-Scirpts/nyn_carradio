@@ -118,7 +118,7 @@
   background: rgba(100, 176, 216, 0.85);
 }
 
-/* ── Header ── */
+
 
 .ext-header {
   display: flex;
@@ -386,7 +386,7 @@
   cursor: not-allowed;
 }
 
-/* ── Body / panes ── */
+
 
 .ext-body {
   flex: 1;
@@ -443,7 +443,7 @@
   letter-spacing: 0.2px;
 }
 
-/* ── Stations ── */
+
 
 .ext-station-list {
   display: flex;
@@ -555,7 +555,7 @@
   animation: ext-spin 0.9s linear infinite;
 }
 
-/* ── Now playing ── */
+
 
 .ext-now {
   flex: 1;
@@ -955,7 +955,7 @@
   color: var(--ext-text-muted);
 }
 
-/* ── URL row (merged into Play tab) ── */
+
 
 .ext-url {
   flex: 1;
@@ -996,7 +996,7 @@
   border-color: rgba(100, 176, 216, 0.45);
 }
 
-/* ── Playlists ── */
+
 
 .ext-playlists {
   flex: 1;
@@ -1155,7 +1155,7 @@
   font-size: 11px;
 }
 
-/* ── Buttons ── */
+
 
 .ext-btn {
   height: 36px;
@@ -1207,7 +1207,7 @@
   cursor: not-allowed;
 }
 
-/* ── Motion ── */
+
 
 @keyframes ext-pulse {
   0%,

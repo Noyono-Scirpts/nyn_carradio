@@ -7,39 +7,25 @@ Config.Debug = false
 -- Show "NYN" prefix in the NUI brand
 Config.ShowNynPrefix = true
 
--- Paid drop-in extension. Command / keybind live in nyn_carradio_plus.
--- This only enables the base UI bridge + OpenExtension export.
+-- Enable Car Radio+ UI bridge (command/keybind live in nyn_carradio_plus)
 Config.EnableExtension = true
 Config.ExtensionResource = 'nyn_carradio_plus'
 
--- Default key for the base car radio UI.
--- Players can also remap it in FiveM Settings → Key Bindings → FiveM.
+-- Remappable in FiveM Settings → Key Bindings → FiveM
 Config.Keybind = 'Q'
 
--- Disable car radio in emergency vehicles (police, ambulance, fire – class 18)
+-- Disable in emergency vehicles (class 18)
 Config.DisableInEmergency = true
 
---[[
-  Who can control the base Q radio (hold Q UI + mouse-wheel station cycle):
-  true  = anyone sitting in the vehicle
-  false = only driver + front passenger (rear seats hear sync, cannot control)
-
-  Independent of nyn_carradio_plus Config.AllowRearSeatControl (that one is only for Plus).
-]]
+-- true = any seat; false = driver + front passenger only (separate from Plus)
 Config.AllowRearSeatControl = true
 
--- Notify when radio is blocked / Plus missing / not in a vehicle
 Config.NotifyOnBlocked = true
 
--- 'nyn_lib' = nyn_lib notifications | 'ox_lib' = ox_lib notify
+-- 'nyn_lib' | 'ox_lib'
 Config.Notify = 'nyn_lib'
 
---[[
-  Station types:
-  1. "off"    - turns off all music
-  2. "native" - GTA V radio stations
-  3. "stream" - custom URL stream (mp3/icecast) via HTML Audio
-]]
+-- Station types: "off" | "native" | "stream" (URL via HTML Audio)
 Config.Stations = {
     {
         name = "Radio Off",

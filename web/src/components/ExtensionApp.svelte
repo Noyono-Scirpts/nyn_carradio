@@ -397,7 +397,6 @@
     return youtubeThumb(url) || ''
   }
 
-  /** Soft enrich generic titles after sync — never blocks playback. */
   async function enrichPlaybackMeta(state) {
     if (!state?.url || !isYoutubeUrl(state.url)) return
     if (state.title && !isGenericTitle(state.title) && state.thumbnail) {
@@ -406,7 +405,6 @@
     }
     const meta = await fetchYoutubeMeta(state.url)
     if (!meta) return
-    // Only patch if still same URL
     if (playback?.url !== state.url) return
     playback = {
       ...playback,

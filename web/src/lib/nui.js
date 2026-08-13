@@ -1,7 +1,3 @@
-/**
- * FiveM NUI helpers
- */
-
 export function getResourceName() {
   try {
     if (typeof GetParentResourceName === 'function') {

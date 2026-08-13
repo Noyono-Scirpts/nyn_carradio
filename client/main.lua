@@ -154,7 +154,6 @@ local function sendNui(payload)
     SendNUIMessage(payload)
 end
 
---- Always attach stations so NUI never opens with an empty carousel (init can race).
 local function sendRadioUi(action, extra)
     local payload = {
         action = action,
