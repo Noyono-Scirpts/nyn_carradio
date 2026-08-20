@@ -801,10 +801,8 @@ RegisterNUICallback('extensionPlay', function(data, cb)
         cb({ ok = true })
     else
         local errCode = type(err) == 'string' and err or 'play_failed'
-        local msg = errCode == 'no_xsound'
-            and 'Video nelze pĹ™ehrĂˇt â€” xsound nebÄ›ĹľĂ­.'
-            or 'Video nelze pĹ™ehrĂˇt.'
-        notify('error', 'Car Radio+', msg)
+        local msgKey = errCode == 'no_xsound' and 'plus_err_no_xsound' or 'plus_err_play_video'
+        notify('error', 'notify_plus_missing_title', msgKey)
         cb({ ok = false, error = errCode })
     end
 end)

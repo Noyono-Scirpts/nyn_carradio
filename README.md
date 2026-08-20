@@ -77,3 +77,12 @@ cd web
 npm install
 npm run build
 ```
+
+## Release
+
+```bash
+./scripts/release.sh patch   # mac / linux
+scripts\release.bat patch    # windows
+```
+
+Bumps `version` in `fxmanifest.lua`, zips shippable files (no `web/`), and writes the version into public [nyn_versions](https://github.com/Noyono-Scirpts/nyn_versions) so `nyn_lib` can check it. Needs `gh auth login`.

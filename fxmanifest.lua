@@ -9,7 +9,7 @@ ui_page 'ui/index.html'
 
 shared_scripts {
     '@ox_lib/init.lua',
-    '@nyn_lib/init.lua',
+    '@nyn_lib/shared/init.lua',
     'shared/*.lua',
     'locales/*.lua',
 }
@@ -24,8 +24,7 @@ server_scripts {
 
 files {
     'ui/index.html',
-    'ui/assets/*',
-    'ui/images/*.png',
+    'ui/**/*',
 }
 
 dependencies {
